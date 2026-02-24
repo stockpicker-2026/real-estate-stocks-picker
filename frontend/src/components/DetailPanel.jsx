@@ -60,14 +60,14 @@ export default function DetailPanel({ rating, onClose }) {
 
   if (!rating) return null
 
-  // 计算量化综合分（5维度加权）
-  const quantScore = Math.round(
+  // 计算量化综合分（5维度加权，保留1位小数）
+  const quantScore = (
     rating.trend_score * 0.25 +
     rating.momentum_score * 0.20 +
     rating.volatility_score * 0.15 +
     rating.volume_score * 0.20 +
     rating.value_score * 0.20
-  )
+  ).toFixed(1)
 
   const scores = [
     { label: '趋势评分', value: rating.trend_score, key: 'trend' },

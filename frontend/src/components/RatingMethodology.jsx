@@ -42,27 +42,27 @@ export default function RatingMethodology() {
                 <DimensionItem
                   name="趋势评分"
                   weight="25%"
-                  desc="均线排列（MA5/MA20/MA60）、价格相对位置、均线斜率"
+                  desc="四级均线排列(MA5/10/20/60)、价格偏离度、MA20斜率、均线黏合度、ADX趋势强度"
                 />
                 <DimensionItem
                   name="动量评分"
                   weight="20%"
-                  desc="RSI强弱指标、MACD趋势信号、近期涨跌幅"
+                  desc="RSI双周期(6+14)、MACD信号+柱状体变化、KDJ随机指标、Williams %R、多周期涨跌幅"
                 />
                 <DimensionItem
                   name="波动率评分"
                   weight="15%"
-                  desc="年化波动率、布林带宽度，波动越低评分越高"
+                  desc="年化波动率、布林带宽度+价格位置、ATR(14)相对波动、波动率收敛/发散趋势"
                 />
                 <DimensionItem
                   name="成交量评分"
                   weight="20%"
-                  desc="量比（5日/20日）、量价配合度、成交量趋势"
+                  desc="多级量比(5/10/20日)、OBV能量潮、VWAP偏离度、量价配合度、成交量趋势"
                 />
                 <DimensionItem
                   name="价值评分"
                   weight="20%"
-                  desc="距52周高低点位置、近期支撑强度"
+                  desc="区间位置连续评分、筹码集中度、多级支撑压力(10/20/60日)、价格动态区间"
                 />
               </div>
             </div>
@@ -78,20 +78,24 @@ export default function RatingMethodology() {
               </div>
               <div className="dimension-list">
                 <DimensionItem
-                  name="技术面解读"
-                  desc="结合行情数据和量化评分，给出技术面综合判断"
+                  name="公司基本面"
+                  weight="40%"
+                  desc="经营质量、财务健康(三道红线)、土储质量、销售回款、管理层能力"
                 />
                 <DimensionItem
-                  name="行业/基本面"
-                  desc="中国房地产行业政策环境、公司经营状况推断"
+                  name="行业政策与周期"
+                  weight="30%"
+                  desc="房地产调控政策、行业周期阶段、融资环境、市场供需格局"
                 />
                 <DimensionItem
-                  name="资金面分析"
-                  desc="成交量变化反映的市场资金态度和关注度"
+                  name="技术面与资金面"
+                  weight="20%"
+                  desc="价格趋势、机构资金动向、北向资金、筹码结构分析"
                 />
                 <DimensionItem
                   name="风险评估"
-                  desc="识别潜在风险因素，给出操作建议"
+                  weight="10%"
+                  desc="债务违约风险、项目交付风险、系统性行业风险"
                 />
               </div>
             </div>
