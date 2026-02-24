@@ -20,8 +20,8 @@ COPY backend/ .
 # 复制前端构建产物
 COPY --from=frontend-build /app/backend/static ./static
 
-# 创建数据目录
-RUN mkdir -p /app/data
+# 创建数据目录和上传目录
+RUN mkdir -p /app/data/uploads
 
 EXPOSE 8000
 

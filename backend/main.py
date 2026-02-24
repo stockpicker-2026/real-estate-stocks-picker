@@ -14,9 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, func
 
 from app.api import router
-from app.config import REFRESH_HOUR, REFRESH_MINUTE
+from app.config import REFRESH_HOUR, REFRESH_MINUTE, ADMIN_USERNAME, ADMIN_PASSWORD, UPLOAD_DIR
 from app.database import init_db, async_session
-from app.models import Rating
+from app.models import Rating, User
+from app.auth import hash_password
 from app.scheduler import init_stock_list, refresh_all_data
 
 logging.basicConfig(
@@ -26,6 +27,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
+
+
+async def init_admin():
+    """首次启动时创建默认管理员账户"""
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.username == ADMIN_USERNAME))
+        if result.scalar_one_or_none() is None:
+            admin = User(
+                username=ADMIN_USERNAME,
+                hashed_password=hash_password(ADMIN_PASSWORD),
+                display_name="管理员",
+                is_admin=True,
+                is_active=True,
+            )
+            session.add(admin)
+            await session.commit()
+            logger.info(f"默认管理员账户已创建: {ADMIN_USERNAME}")
+        else:
+            logger.info("管理员账户已存在，跳过创建")
 
 
 async def check_and_refresh():
@@ -43,9 +63,13 @@ async def check_and_refresh():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import os
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
     # 启动
     await init_db()
     await init_stock_list()
+    await init_admin()
     logger.info("数据库初始化完成")
 
     # 定时任务: 每天早上9点刷新

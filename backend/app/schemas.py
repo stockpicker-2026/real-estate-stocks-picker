@@ -3,6 +3,84 @@ from typing import Optional, List
 from pydantic import BaseModel
 
 
+# ========== 认证相关 ==========
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    display_name: Optional[str] = ""
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    display_name: str
+    is_admin: bool
+
+    class Config:
+        from_attributes = True
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+# ========== 点评相关 ==========
+class CommentaryCreate(BaseModel):
+    title: str
+    content: str
+    category: str = "industry"
+    stock_codes: Optional[str] = ""
+    publish_date: Optional[date] = None
+
+
+class CommentaryUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+    stock_codes: Optional[str] = None
+    is_published: Optional[bool] = None
+
+
+class CommentaryOut(BaseModel):
+    id: int
+    title: str
+    content: str
+    category: str
+    stock_codes: str
+    author: str
+    is_published: bool
+    publish_date: date
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ========== 报告相关 ==========
+class ReportOut(BaseModel):
+    id: int
+    title: str
+    summary: str
+    institution: str
+    original_name: str
+    file_size: int
+    author: str
+    is_published: bool
+    publish_date: date
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ========== 原有模型 ==========
 class StockOut(BaseModel):
     id: int
     code: str

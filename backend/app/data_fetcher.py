@@ -4,26 +4,57 @@
 """
 
 import logging
+import ssl
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
 import akshare as ak
 import pandas as pd
+import urllib3
 
 logger = logging.getLogger(__name__)
+
+# 修复 macOS LibreSSL 兼容性问题
+try:
+    urllib3.util.ssl_.DEFAULT_CIPHERS = "ALL:@SECLEVEL=1"
+except Exception:
+    pass
+
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # 秒
+
+
+def _retry_fetch(fn, label: str):
+    """带重试的数据获取包装器"""
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            result = fn()
+            return result
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                logger.info(f"{label} 第{attempt}次失败, {RETRY_DELAY}秒后重试: {e}")
+                time.sleep(RETRY_DELAY * attempt)
+            else:
+                logger.warning(f"{label} 数据失败(已重试{MAX_RETRIES}次): {e}")
+                return None
 
 
 def fetch_a_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]:
     """获取A股历史行情"""
-    try:
-        end_date = datetime.now().strftime("%Y%m%d")
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
-        df = ak.stock_zh_a_hist(
+    end_date = datetime.now().strftime("%Y%m%d")
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+
+    def _do():
+        return ak.stock_zh_a_hist(
             symbol=code, period="daily",
             start_date=start_date, end_date=end_date, adjust="qfq"
         )
-        if df is None or df.empty:
-            return None
+
+    df = _retry_fetch(_do, f"获取A股 {code}")
+    if df is None or df.empty:
+        return None
+    try:
         df = df.rename(columns={
             "日期": "date", "开盘": "open", "收盘": "close",
             "最高": "high", "最低": "low", "成交量": "volume",
@@ -32,21 +63,25 @@ def fetch_a_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]:
         df["date"] = pd.to_datetime(df["date"]).dt.date
         return df[["date", "open", "high", "low", "close", "volume", "turnover", "change_pct"]]
     except Exception as e:
-        logger.warning(f"获取A股 {code} 数据失败: {e}")
+        logger.warning(f"处理A股 {code} 数据失败: {e}")
         return None
 
 
 def fetch_hk_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]:
     """获取港股历史行情"""
-    try:
-        df = ak.stock_hk_hist(
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    end_date = datetime.now().strftime("%Y%m%d")
+
+    def _do():
+        return ak.stock_hk_hist(
             symbol=code, period="daily",
-            start_date=(datetime.now() - timedelta(days=days)).strftime("%Y%m%d"),
-            end_date=datetime.now().strftime("%Y%m%d"),
-            adjust="qfq"
+            start_date=start_date, end_date=end_date, adjust="qfq"
         )
-        if df is None or df.empty:
-            return None
+
+    df = _retry_fetch(_do, f"获取港股 {code}")
+    if df is None or df.empty:
+        return None
+    try:
         df = df.rename(columns={
             "日期": "date", "开盘": "open", "收盘": "close",
             "最高": "high", "最低": "low", "成交量": "volume",
@@ -55,7 +90,7 @@ def fetch_hk_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]:
         df["date"] = pd.to_datetime(df["date"]).dt.date
         return df[["date", "open", "high", "low", "close", "volume", "turnover", "change_pct"]]
     except Exception as e:
-        logger.warning(f"获取港股 {code} 数据失败: {e}")
+        logger.warning(f"处理港股 {code} 数据失败: {e}")
         return None
 
 

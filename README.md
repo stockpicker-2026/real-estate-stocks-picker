@@ -7,38 +7,64 @@
 ```
 ┌─────────────────────────────────────────────────┐
 │                   Nginx (端口80)                 │
-│              反向代理 + 静态资源缓存              │
+│         反向代理 + 静态资源缓存 + 限流           │
 └──────────────────────┬──────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────┐
 │              FastAPI 后端 (端口8000)              │
 │                                                  │
-│  ┌─────────────┐  ┌──────────┐  ┌────────────┐  │
-│  │ 数据采集模块 │  │ 评级引擎 │  │ 定时调度器 │  │
-│  │  (AKShare)  │  │(量化+AI) │  │(APScheduler)│ │
-│  └──────┬──────┘  └────┬─────┘  └─────┬──────┘  │
-│         │              │              │          │
-│  ┌──────▼──────────────▼──────────────▼──────┐  │
-│  │              SQLite 数据库                  │  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────────────┐ │
+│  │ JWT 认证 │ │ 数据采集 │ │    评级引擎      │ │
+│  │ 用户管理 │ │ (AKShare)│ │  (量化+AI混合)   │ │
+│  └──────────┘ └──────────┘ └──────────────────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌──────────────────┐ │
+│  │ 市场点评 │ │ 研究报告 │ │   定时调度器     │ │
+│  │  CRUD    │ │ 上传下载 │ │  (APScheduler)   │ │
+│  └──────────┘ └──────────┘ └──────────────────┘ │
+│  ┌───────────────────────────────────────────┐  │
+│  │       SQLite + 文件存储 (uploads/)         │  │
 │  └───────────────────────────────────────────┘  │
-│         │                                        │
-│  ┌──────▼──────────────────────────────────┐    │
-│  │        腾讯混元2.0 大模型 API            │    │
-│  │     (TC3-HMAC-SHA256 签名认证)           │    │
-│  └─────────────────────────────────────────┘    │
+│  ┌───────────────────────────────────────────┐  │
+│  │     腾讯混元2.0 大模型 API (TC3签名)       │  │
+│  └───────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────┐
 │            React 前端 (Vite 构建)                │
 │                                                  │
-│  ┌───────────┐ ┌───────────┐ ┌──────────────┐  │
-│  │ 统计仪表盘 │ │ 评级列表  │ │ 股票详情面板 │  │
-│  └───────────┘ └───────────┘ └──────────────┘  │
-│  ┌───────────────────────────────────────────┐  │
-│  │           评级逻辑说明模块                  │  │
-│  └───────────────────────────────────────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────────────┐ │
+│  │ 登录页面 │ │ AI评级   │ │   市场点评       │ │
+│  └──────────┘ │ 仪表盘   │ │  行业/个股点评   │ │
+│               │ 评级列表 │ └──────────────────┘ │
+│               │ 详情面板 │ ┌──────────────────┐ │
+│               └──────────┘ │   研究报告       │ │
+│  ┌──────────────────────┐  │  查看/下载报告   │ │
+│  │  用户管理(管理员)     │  └──────────────────┘ │
+│  └──────────────────────┘                        │
 └─────────────────────────────────────────────────┘
 ```
+
+## 功能模块
+
+### 1. 用户认证系统
+- JWT Token 认证，支持多终端同时登录，token 有效期 72 小时
+- 管理员后台创建用户，最大支持 100 个账户
+- 角色权限：管理员（全部功能）/ 普通用户（查看功能）
+
+### 2. AI 智能评级
+- 量化技术评分 × 50% + AI大模型评分 × 50%
+- 每日 09:00 自动刷新，覆盖 55 只房地产股票
+- 支持按市场、评级筛选，支持历史日期回溯
+
+### 3. 市场点评
+- 管理员发布每日行业点评和个股点评
+- 支持分类筛选（行业/个股），可关联股票代码
+- 支持创建、编辑、删除
+
+### 4. 研究报告
+- 管理员上传机构研究报告（PDF/Word/Excel/PPT，最大50MB）
+- 用户查看报告列表并下载
+- 文件使用 UUID 重命名存储，安全可靠
 
 ## 评级模型
 
@@ -88,9 +114,11 @@
 - FastAPI + Uvicorn（异步 Web 框架）
 - SQLAlchemy + aiosqlite（异步 ORM + SQLite）
 - APScheduler（定时任务，每日 09:00 自动评级）
-- AKShare（A股/港股/美股行情数据）
+- AKShare（A股/港股/美股行情数据，自动重试）
 - httpx（异步调用腾讯混元 API）
 - pandas / numpy（量化计算）
+- python-jose + passlib（JWT 认证 + 密码哈希）
+- aiofiles（异步文件上传）
 
 **前端**：
 - React 18 + Vite（构建工具）
@@ -98,41 +126,52 @@
 
 **部署**：
 - Docker + Docker Compose
-- Nginx 反向代理
+- Nginx 反向代理（限流 + 静态缓存）
 
 ## 快速开始
 
 ### 1. 环境准备
 
 ```bash
-# 克隆项目
 git clone <repo-url>
 cd "real estate stock agent"
 ```
 
-### 2. 配置腾讯混元 API
+### 2. 配置环境变量
 
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-编辑 `backend/.env`，填入你的密钥：
+编辑 `backend/.env`：
 
 ```env
 HUNYUAN_SECRET_ID=你的SecretId
 HUNYUAN_SECRET_KEY=你的SecretKey
 HUNYUAN_MODEL=hunyuan-2.0-thinking-20251109
+
+JWT_SECRET=修改为随机字符串
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
 ```
 
-### 3. 本地开发运行
+### 3. Docker 部署（推荐）
+
+```bash
+docker-compose up -d --build
+```
+
+访问 http://localhost，使用管理员账号登录。
+
+### 4. 本地开发运行
 
 **启动后端**：
 
 ```bash
 cd backend
 pip install -r requirements.txt
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **启动前端**：
@@ -143,15 +182,13 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:5173
+访问 http://localhost:3000
 
-### 4. Docker 部署
+### 5. 默认账号
 
-```bash
-docker-compose up -d
-```
+首次启动自动创建管理员：`admin` / `admin123`（可通过 .env 修改）。
 
-访问 http://localhost
+普通用户由管理员在"用户管理"页面创建，最大支持 100 个账户。
 
 ## 项目结构
 
@@ -159,29 +196,34 @@ docker-compose up -d
 ├── backend/
 │   ├── main.py                 # FastAPI 入口，生命周期管理
 │   ├── requirements.txt        # Python 依赖
-│   ├── .env                    # 环境变量（混元API密钥）
+│   ├── .env                    # 环境变量
 │   └── app/
-│       ├── api.py              # REST API 路由
+│       ├── api.py              # REST API 路由（评级+认证+点评+报告+用户管理）
+│       ├── auth.py             # JWT 认证 + 密码哈希 + 权限依赖注入
 │       ├── config.py           # 配置管理
 │       ├── database.py         # 数据库连接
-│       ├── models.py           # SQLAlchemy 数据模型
+│       ├── models.py           # 数据模型（User/Stock/Rating/Commentary/Report）
 │       ├── schemas.py          # Pydantic 响应模型
 │       ├── stock_list.py       # 房地产股票列表（55只）
-│       ├── data_fetcher.py     # AKShare 数据采集
+│       ├── data_fetcher.py     # AKShare 数据采集（自动重试）
 │       ├── rating_engine.py    # 评级引擎（量化+AI混合）
 │       ├── llm_client.py       # 腾讯混元大模型客户端
 │       └── scheduler.py        # 定时任务调度
 ├── frontend/
 │   ├── package.json
 │   └── src/
-│       ├── App.jsx             # 主应用组件
-│       ├── api.js              # API 封装
+│       ├── App.jsx             # 主应用（认证+Tab导航+板块切换）
+│       ├── api.js              # API 封装（含Token管理）
 │       ├── index.css           # 全局样式
 │       └── components/
+│           ├── LoginPage.jsx        # 登录页面
 │           ├── StatsCards.jsx       # 统计仪表盘
 │           ├── RatingMethodology.jsx # 评级逻辑说明
 │           ├── RatingTable.jsx      # 评级列表表格
-│           └── DetailPanel.jsx      # 股票详情浮层
+│           ├── DetailPanel.jsx      # 股票详情浮层
+│           ├── CommentarySection.jsx # 市场点评板块
+│           ├── ReportSection.jsx    # 研究报告板块
+│           └── UserManagement.jsx   # 用户管理（管理员）
 ├── Dockerfile                  # 多阶段构建
 ├── docker-compose.yml          # 容器编排
 └── nginx.conf                  # Nginx 反向代理配置
@@ -189,16 +231,52 @@ docker-compose up -d
 
 ## API 接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/dashboard` | 仪表盘统计数据 |
-| GET | `/api/stocks` | 股票列表 |
-| GET | `/api/ratings/latest` | 最新评级（支持筛选和排序） |
-| GET | `/api/ratings/dates` | 可用评级日期列表 |
-| GET | `/api/ratings/date/{date}` | 按日期查询评级 |
-| GET | `/api/ratings/history/{code}` | 单只股票评级历史 |
-| GET | `/api/prices/{code}` | 股票价格数据 |
-| GET | `/api/rating-trend/{code}` | 评分趋势数据 |
+### 认证
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| POST | `/api/auth/login` | 用户登录 | 公开 |
+| GET | `/api/auth/me` | 获取当前用户信息 | 登录 |
+
+### 用户管理
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| GET | `/api/users` | 用户列表 | 管理员 |
+| POST | `/api/users` | 创建用户 | 管理员 |
+| DELETE | `/api/users/{id}` | 删除用户 | 管理员 |
+
+### 评级数据
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| GET | `/api/dashboard` | 仪表盘统计 | 登录 |
+| GET | `/api/stocks` | 股票列表 | 登录 |
+| GET | `/api/ratings/latest` | 最新评级（支持筛选排序） | 登录 |
+| GET | `/api/ratings/dates` | 可用评级日期 | 登录 |
+| GET | `/api/ratings/date/{date}` | 按日期查询评级 | 登录 |
+| GET | `/api/ratings/history/{code}` | 单只股票评级历史 | 登录 |
+| GET | `/api/prices/{code}` | 股票价格数据 | 登录 |
+| GET | `/api/rating-trend/{code}` | 评分趋势 | 登录 |
+
+### 市场点评
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| GET | `/api/commentaries` | 点评列表（支持分类筛选） | 登录 |
+| GET | `/api/commentaries/{id}` | 点评详情 | 登录 |
+| POST | `/api/commentaries` | 创建点评 | 管理员 |
+| PUT | `/api/commentaries/{id}` | 编辑点评 | 管理员 |
+| DELETE | `/api/commentaries/{id}` | 删除点评 | 管理员 |
+
+### 研究报告
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| GET | `/api/reports` | 报告列表 | 登录 |
+| POST | `/api/reports` | 上传报告（Form+File） | 管理员 |
+| GET | `/api/reports/{id}/download` | 下载报告 | 登录 |
+| DELETE | `/api/reports/{id}` | 删除报告 | 管理员 |
 
 ## 声明
 

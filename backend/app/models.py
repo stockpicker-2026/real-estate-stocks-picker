@@ -1,6 +1,51 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, Date, Text, Index
+from sqlalchemy import Column, String, Float, Integer, DateTime, Date, Text, Index, Boolean
 from sqlalchemy.sql import func
 from app.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), nullable=False, unique=True, index=True)
+    hashed_password = Column(String(200), nullable=False)
+    display_name = Column(String(100), default="")
+    is_admin = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Commentary(Base):
+    """每日市场点评"""
+    __tablename__ = "commentaries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String(20), default="industry")  # industry=行业点评, stock=个股点评
+    stock_codes = Column(String(500), default="")  # 关联股票代码，逗号分隔
+    author = Column(String(50), default="admin")
+    is_published = Column(Boolean, default=True)
+    publish_date = Column(Date, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Report(Base):
+    """机构研究报告"""
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(300), nullable=False)
+    summary = Column(Text, default="")
+    institution = Column(String(100), default="")  # 发布机构
+    filename = Column(String(300), nullable=False)  # 存储文件名
+    original_name = Column(String(300), nullable=False)  # 原始文件名
+    file_size = Column(Integer, default=0)  # 文件大小(bytes)
+    author = Column(String(50), default="admin")
+    is_published = Column(Boolean, default=True)
+    publish_date = Column(Date, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class Stock(Base):
