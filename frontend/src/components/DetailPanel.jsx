@@ -13,11 +13,10 @@ function getScoreColor(score) {
 
 function getBadgeClass(rating) {
   switch (rating) {
-    case '强烈推荐': return 'badge-strong-buy'
-    case '推荐': return 'badge-buy'
+    case '优选': return 'badge-strong-buy'
+    case '关注': return 'badge-buy'
     case '中性': return 'badge-neutral'
     case '谨慎': return 'badge-caution'
-    case '回避': return 'badge-avoid'
     default: return 'badge-neutral'
   }
 }

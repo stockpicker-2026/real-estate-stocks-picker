@@ -105,11 +105,10 @@ export default function RatingMethodology() {
           <div className="methodology-ratings">
             <div className="methodology-ratings-title">评级映射标准</div>
             <div className="rating-map-row">
-              <RatingBadge label="强烈推荐" range="≥ 80分" cls="badge-strong-buy" />
-              <RatingBadge label="推荐" range="65-79分" cls="badge-buy" />
-              <RatingBadge label="中性" range="50-64分" cls="badge-neutral" />
-              <RatingBadge label="谨慎" range="35-49分" cls="badge-caution" />
-              <RatingBadge label="回避" range="< 35分" cls="badge-avoid" />
+              <RatingBadge label="优选" range="≥ 65分" cls="badge-strong-buy" />
+              <RatingBadge label="关注" range="50-64分" cls="badge-buy" />
+              <RatingBadge label="中性" range="35-49分" cls="badge-neutral" />
+              <RatingBadge label="谨慎" range="< 35分" cls="badge-caution" />
             </div>
           </div>
         </div>

@@ -23,11 +23,11 @@
 （若AI不可用，则100%使用量化评分）
 
 评级映射:
-  >= 80: 强烈推荐
-  >= 65: 推荐
-  >= 50: 中性
-  >= 35: 谨慎
-  <  35: 回避
+  >= 80: 优选
+  >= 65: 优选
+  >= 50: 关注
+  >= 35: 中性
+  <  35: 谨慎
 """
 
 import json
@@ -55,11 +55,11 @@ QUANT_RATIO = 0.50  # 量化评分占比
 AI_RATIO = 0.50     # AI评分占比
 
 RATING_MAP = [
-    (80, "强烈推荐"),
-    (65, "推荐"),
-    (50, "中性"),
-    (35, "谨慎"),
-    (0, "回避"),
+    (80, "优选"),
+    (65, "优选"),
+    (50, "关注"),
+    (35, "中性"),
+    (0, "谨慎"),
 ]
 
 AI_SYSTEM_PROMPT = """你是一位资深的中国房地产行业股票分析师，拥有超过15年A股、港股和美股房地产板块研究经验。
@@ -853,7 +853,7 @@ async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: s
         reason = ""
 
     # 4. 映射评级
-    rating = "回避"
+    rating = "谨慎"
     for threshold, label in RATING_MAP:
         if total >= threshold:
             rating = label

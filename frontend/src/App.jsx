@@ -25,11 +25,10 @@ const MARKET_FILTERS = [
 
 const RATING_FILTERS = [
   { value: '', label: '全部评级' },
-  { value: '强烈推荐', label: '强烈推荐' },
-  { value: '推荐', label: '推荐' },
+  { value: '优选', label: '优选' },
+  { value: '关注', label: '关注' },
   { value: '中性', label: '中性' },
   { value: '谨慎', label: '谨慎' },
-  { value: '回避', label: '回避' },
 ]
 
 const AUTO_REFRESH_INTERVAL = 30000

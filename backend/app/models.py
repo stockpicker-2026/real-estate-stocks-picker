@@ -98,7 +98,7 @@ class Rating(Base):
     ai_score = Column(Float, default=0)
     # 综合评分
     total_score = Column(Float, default=0)
-    # 评级: 强烈推荐/推荐/中性/谨慎/回避
+    # 评级: 优选/关注/中性/谨慎
     rating = Column(String(20), nullable=False)
     # 评级理由
     reason = Column(Text, default="")
