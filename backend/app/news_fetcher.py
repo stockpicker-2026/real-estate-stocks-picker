@@ -1,9 +1,8 @@
 """
 房地产行业新闻资讯获取模块
-数据源优先级：官方权威媒体 > 财经媒体
-1. 人民网房产频道、新华网、央视网
-2. 住建部/自然资源部等政府网站资讯
-3. 东方财富房地产板块（兜底）
+数据源：
+1. 东方财富搜索 API（主力）：多关键词搜索，获取最新房地产新闻
+2. 中国政府网政策库（补充）：房地产相关政策文件
 获取后通过 AI 进行相关性筛选，只保留高度相关的房地产政策新闻
 """
 
@@ -12,6 +11,7 @@ import logging
 import random
 import re
 import time
+import urllib.parse
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -54,6 +54,7 @@ def _get_json_headers():
         "User-Agent": random.choice(_USER_AGENTS),
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Referer": "https://www.eastmoney.com/",
     }
 
 
@@ -69,138 +70,79 @@ def _set_cache(key: str, data: List[Dict]):
     _news_cache[key] = {"ts": time.time(), "data": data}
 
 
-# ========== 官方权威媒体数据源 ==========
+# ========== 数据源 ==========
 
-def _fetch_people_cn() -> List[Dict]:
-    """人民网房产频道"""
+def _fetch_eastmoney_search(keyword: str, page_size: int = 15) -> List[Dict]:
+    """东方财富搜索 API — 按关键词搜索新闻"""
     news = []
     try:
-        # 人民网房产频道 RSS/列表页
-        url = "http://house.people.com.cn/GB/164291/index.html"
-        resp = requests.get(url, headers=_get_headers(), timeout=10)
-        resp.encoding = "gb2312"
+        encoded_kw = urllib.parse.quote(keyword)
+        url = (
+            f"https://search-api-web.eastmoney.com/search/jsonp?"
+            f"cb=jQuery&param=%7B%22uid%22%3A%22%22%2C%22keyword%22%3A%22{encoded_kw}%22"
+            f"%2C%22type%22%3A%5B%22cmsArticleWebOld%22%5D"
+            f"%2C%22client%22%3A%22web%22%2C%22clientType%22%3A%22web%22"
+            f"%2C%22clientVersion%22%3A%22curr%22"
+            f"%2C%22param%22%3A%7B%22cmsArticleWebOld%22%3A%7B%22searchScope%22%3A%22default%22"
+            f"%2C%22sort%22%3A%22default%22%2C%22pageIndex%22%3A1%2C%22pageSize%22%3A{page_size}"
+            f"%2C%22preTag%22%3A%22%22%2C%22postTag%22%3A%22%22%7D%7D%7D"
+        )
+        resp = requests.get(url, headers=_get_json_headers(), timeout=10)
         if resp.status_code == 200:
-            # 提取标题和链接
-            pattern = r'<a[^>]*href="(http://house\.people\.com\.cn/[^"]*)"[^>]*>([^<]+)</a>'
-            matches = re.findall(pattern, resp.text)
-            for link, title in matches[:20]:
-                title = title.strip()
-                if len(title) > 8 and _RE_KEYWORDS.search(title):
-                    news.append({
-                        "title": title,
-                        "source": "人民网",
-                        "url": link,
-                        "time": "",
-                    })
+            match = re.search(r'jQuery\((\{.*\})\)', resp.text, re.DOTALL)
+            if match:
+                data = json.loads(match.group(1))
+                cms = data.get("result", {}).get("cmsArticleWebOld", {})
+                # API 可能返回 list 或 dict
+                items = cms if isinstance(cms, list) else (cms.get("list", []) if isinstance(cms, dict) else [])
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    title = item.get("title", "").strip()
+                    title = re.sub(r'<[^>]+>', '', title)  # 去除HTML标签
+                    if title and len(title) > 6:
+                        news.append({
+                            "title": title,
+                            "source": "东方财富",
+                            "url": item.get("url", ""),
+                            "time": item.get("date", ""),
+                        })
+        logger.info(f"东方财富搜索「{keyword}」: {len(news)} 条")
     except Exception as e:
-        logger.debug(f"人民网房产频道获取失败: {e}")
-    return news
-
-
-def _fetch_xinhua_net() -> List[Dict]:
-    """新华网房产频道"""
-    news = []
-    try:
-        url = "http://www.news.cn/house/latest_news.html"
-        resp = requests.get(url, headers=_get_headers(), timeout=10)
-        resp.encoding = "utf-8"
-        if resp.status_code == 200:
-            pattern = r'<a[^>]*href="(https?://www\.news\.cn/[^"]*)"[^>]*>([^<]+)</a>'
-            matches = re.findall(pattern, resp.text)
-            for link, title in matches[:20]:
-                title = title.strip()
-                if len(title) > 8 and _RE_KEYWORDS.search(title):
-                    news.append({
-                        "title": title,
-                        "source": "新华网",
-                        "url": link,
-                        "time": "",
-                    })
-    except Exception as e:
-        logger.debug(f"新华网房产频道获取失败: {e}")
+        logger.warning(f"东方财富搜索「{keyword}」失败: {e}")
     return news
 
 
 def _fetch_gov_cn() -> List[Dict]:
-    """中国政府网 - 房地产相关政策"""
+    """中国政府网 - 房地产相关政策文件"""
     news = []
     try:
-        # 中国政府网搜索接口
         url = (
             "http://sousuo.www.gov.cn/search-gov/data?"
-            "t=zhengcelibrary_gw&q=房地产&timetype=timeqb&mintime=&maxtime="
-            "&sort=pubtime&sortType=1&searchfield=title&pcodeJig498=&childtype="
-            "&subchildtype=&tsbq=&pubtimeyear=&puborg=&pcodeYear=&pcodeNum=&p=0&n=5&inpro="
+            "t=zhengce_gw&q=房地产&timetype=timeqb&mintime=&maxtime="
+            "&sort=pubtime&sortType=1&searchfield=title&p=0&n=5"
         )
         resp = requests.get(url, headers=_get_json_headers(), timeout=10)
         if resp.status_code == 200:
             data = resp.json()
-            items = data.get("searchVO", {}).get("catMap", {}).get("zhengcelibrary_gw", {}).get("listVO", [])
-            for item in items[:10]:
-                title = item.get("title", "").strip()
-                title = re.sub(r'<[^>]+>', '', title)
-                if title and len(title) > 6:
-                    news.append({
-                        "title": title,
-                        "source": "中国政府网",
-                        "url": item.get("url", ""),
-                        "time": item.get("pubtimeStr", ""),
-                    })
+            svo = data.get("searchVO")
+            if svo and isinstance(svo, dict):
+                items = svo.get("listVO", [])
+                for item in items[:5]:
+                    if not isinstance(item, dict):
+                        continue
+                    title = item.get("title", "").strip()
+                    title = re.sub(r'<[^>]+>', '', title)
+                    if title and len(title) > 6:
+                        news.append({
+                            "title": title,
+                            "source": "中国政府网",
+                            "url": item.get("url", ""),
+                            "time": item.get("pubtimeStr", ""),
+                        })
+        logger.info(f"中国政府网: {len(news)} 条")
     except Exception as e:
-        logger.debug(f"中国政府网获取失败: {e}")
-    return news
-
-
-def _fetch_sina_finance() -> List[Dict]:
-    """新浪财经房产频道"""
-    news = []
-    try:
-        url = (
-            "https://feed.mix.sina.com.cn/api/roll/get?"
-            "pageid=155&lid=1686&k=&num=20&page=1&r=0.1"
-        )
-        resp = requests.get(url, headers=_get_json_headers(), timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            items = data.get("result", {}).get("data", [])
-            for item in items[:15]:
-                title = item.get("title", "").strip()
-                if title and _RE_KEYWORDS.search(title):
-                    news.append({
-                        "title": title,
-                        "source": "新浪财经",
-                        "url": item.get("url", ""),
-                        "time": item.get("ctime", ""),
-                    })
-    except Exception as e:
-        logger.debug(f"新浪财经房产频道获取失败: {e}")
-    return news
-
-
-def _fetch_eastmoney() -> List[Dict]:
-    """东方财富房地产板块"""
-    news = []
-    try:
-        url = (
-            "https://np-listapi.eastmoney.com/comm/web/getNewsByColumns?"
-            "client=web&biz=web_news_col&column=351&order=1"
-            "&needInteractData=0&page_index=1&page_size=15"
-        )
-        resp = requests.get(url, headers=_get_json_headers(), timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            items = data.get("data", {}).get("list", [])
-            for item in items:
-                title = item.get("title", "").strip()
-                if title and _RE_KEYWORDS.search(title):
-                    news.append({
-                        "title": title,
-                        "source": "东方财富",
-                        "url": item.get("url", ""),
-                        "time": item.get("showTime", ""),
-                    })
-    except Exception as e:
-        logger.debug(f"东方财富房地产板块获取失败: {e}")
+        logger.warning(f"中国政府网获取失败: {e}")
     return news
 
 
@@ -285,12 +227,14 @@ def _keyword_rank_news(news_list: List[Dict], top_n: int = 5) -> List[Dict]:
     return [item[1] for item in scored[:top_n]]
 
 
-# ========== 获取所有新闻（聚合+去重+关键词过滤） ==========
+# ========== 获取所有新闻（聚合+去重） ==========
 
 def fetch_all_industry_news() -> List[Dict]:
     """
-    从多个官方/权威数据源获取房地产行业新闻
-    返回初步过滤后的新闻列表（尚未经过AI筛选）
+    从多个数据源获取房地产行业新闻
+    主力：东方财富搜索 API（多关键词）
+    补充：中国政府网政策库
+    返回去重后的新闻列表（尚未经过AI筛选）
     """
     cache_key = "all_industry_raw"
     cached = _get_cached(cache_key)
@@ -300,34 +244,34 @@ def fetch_all_industry_news() -> List[Dict]:
     all_news = []
     existing_titles = set()
 
-    # 按优先级依次获取（官方媒体优先）
-    sources = [
-        ("中国政府网", _fetch_gov_cn),
-        ("人民网", _fetch_people_cn),
-        ("新华网", _fetch_xinhua_net),
-        ("新浪财经", _fetch_sina_finance),
-        ("东方财富", _fetch_eastmoney),
-    ]
+    def _add_news(items: List[Dict]):
+        for n in items:
+            title = n["title"]
+            if title in existing_titles:
+                continue
+            short = title[:15]
+            if any(short == t[:15] for t in existing_titles):
+                continue
+            existing_titles.add(title)
+            all_news.append(n)
 
-    for name, fetcher in sources:
+    # 东方财富搜索 — 多关键词覆盖面更广
+    search_keywords = ["房地产政策", "楼市", "房企"]
+    for kw in search_keywords:
         try:
-            news = fetcher()
-            for n in news:
-                # 去重（标题相似度判断）
-                title = n["title"]
-                if title in existing_titles:
-                    continue
-                # 简单相似度：标题前15字相同视为重复
-                short_title = title[:15]
-                if any(short_title == t[:15] for t in existing_titles):
-                    continue
-                existing_titles.add(title)
-                all_news.append(n)
-            if news:
-                logger.info(f"  {name}: 获取 {len(news)} 条")
+            items = _fetch_eastmoney_search(kw, page_size=15)
+            _add_news(items)
         except Exception as e:
-            logger.debug(f"  {name}: 获取失败 {e}")
+            logger.warning(f"东方财富搜索「{kw}」异常: {e}")
 
+    # 中国政府网政策库（补充）
+    try:
+        gov_items = _fetch_gov_cn()
+        _add_news(gov_items)
+    except Exception as e:
+        logger.warning(f"中国政府网异常: {e}")
+
+    logger.info(f"新闻汇总: 共 {len(all_news)} 条（去重后）")
     _set_cache(cache_key, all_news)
     return all_news
 
