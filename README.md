@@ -80,11 +80,19 @@
 - 管理员发布每日行业点评和个股点评
 - 支持分类筛选（行业/个股），可关联股票代码
 - 支持创建、编辑、删除
+- **支持分享到微信朋友圈**（生成公开链接，无需登录即可查看）
 
 ### 6. 研究报告
 - 管理员上传机构研究报告（PDF/Word/Excel/PPT，最大50MB）
 - 用户查看报告列表并下载
 - 文件使用 UUID 重命名存储，安全可靠
+- **支持分享到微信朋友圈**（含报告摘要和下载入口）
+
+### 7. 微信分享
+- 点评和报告均支持一键生成分享链接
+- 分享页面包含 Open Graph meta 标签，微信自动抓取标题和描述
+- 公开页面无需登录，移动端适配
+- 底部引导按钮可跳转至完整系统
 
 ## 评级模型
 
@@ -242,8 +250,9 @@ npm run dev
 │           ├── RatingMethodology.jsx # 评级逻辑说明
 │           ├── RatingTable.jsx      # 评级列表表格（分数精度2位小数）
 │           ├── DetailPanel.jsx      # 股票详情浮层（分数精度2位小数）
-│           ├── CommentarySection.jsx # 市场点评板块
-│           ├── ReportSection.jsx    # 研究报告板块
+│           ├── CommentarySection.jsx # 市场点评板块（含分享）
+│           ├── ReportSection.jsx    # 研究报告板块（含分享）
+│           ├── ShareModal.jsx       # 微信分享弹窗（复制链接+引导）
 │           └── UserManagement.jsx   # 用户管理（管理员）
 ├── Dockerfile                  # 多阶段构建
 ├── docker-compose.yml          # 容器编排
@@ -304,6 +313,13 @@ npm run dev
 | POST | `/api/reports` | 上传报告（Form+File） | 管理员 |
 | GET | `/api/reports/{id}/download` | 下载报告 | 登录 |
 | DELETE | `/api/reports/{id}` | 删除报告 | 管理员 |
+
+### 分享页面（公开）
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| GET | `/api/share/commentary/{id}` | 市场点评分享页（含OG标签） | 公开 |
+| GET | `/api/share/report/{id}` | 研究报告分享页（含下载入口） | 公开 |
 
 ## 声明
 
