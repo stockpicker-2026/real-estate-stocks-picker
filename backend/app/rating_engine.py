@@ -625,14 +625,14 @@ def calc_value_score(df: pd.DataFrame) -> float:
 def calc_quant_score(df: pd.DataFrame) -> Dict[str, float]:
     """计算所有量化评分维度"""
     scores = {
-        "trend": round(calc_trend_score(df), 1),
-        "momentum": round(calc_momentum_score(df), 1),
-        "volatility": round(calc_volatility_score(df), 1),
-        "volume": round(calc_volume_score(df), 1),
-        "value": round(calc_value_score(df), 1),
+        "trend": round(calc_trend_score(df), 2),
+        "momentum": round(calc_momentum_score(df), 2),
+        "volatility": round(calc_volatility_score(df), 2),
+        "volume": round(calc_volume_score(df), 2),
+        "value": round(calc_value_score(df), 2),
     }
     total = sum(scores[k] * QUANT_WEIGHTS[k] for k in QUANT_WEIGHTS)
-    scores["quant_total"] = round(total, 1)
+    scores["quant_total"] = round(total, 2)
     return scores
 
 
@@ -823,11 +823,11 @@ async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: s
     # 3. 综合计算
     if ai_result:
         ai_score = ai_result["ai_score"]
-        total = round(quant_total * QUANT_RATIO + ai_score * AI_RATIO, 1)
+        total = round(quant_total * QUANT_RATIO + ai_score * AI_RATIO, 2)
         reason = ai_result["analysis"]
     else:
         ai_score = 0.0
-        total = round(quant_total, 1)  # AI不可用，100%量化
+        total = round(quant_total, 2)  # AI不可用，100%量化
         reason = ""
 
     # 4. 映射评级
@@ -847,7 +847,7 @@ async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: s
         "volatility_score": quant_scores["volatility"],
         "volume_score": quant_scores["volume"],
         "value_score": quant_scores["value"],
-        "ai_score": round(ai_score, 1),
+        "ai_score": round(ai_score, 2),
         "total_score": total,
         "rating": rating,
         "reason": reason,

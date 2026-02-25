@@ -52,6 +52,7 @@ function getMarketLabel(market) {
 
 function ScoreBar({ score }) {
   const color = getScoreColor(score)
+  const display = typeof score === 'number' ? score.toFixed(2) : score
   return (
     <div className="score-bar">
       <div className="score-bar-track">
@@ -60,7 +61,7 @@ function ScoreBar({ score }) {
           style={{ width: `${score}%`, background: color }}
         />
       </div>
-      <span className="score-bar-value" style={{ color }}>{score}</span>
+      <span className="score-bar-value" style={{ color }}>{display}</span>
     </div>
   )
 }
@@ -103,7 +104,7 @@ export default function RatingTable({ ratings, sortBy, sortDir, onSort, onSelect
                   fontWeight: 700,
                   color: getScoreColor(r.total_score),
                 }}>
-                  {r.total_score}
+                  {typeof r.total_score === 'number' ? r.total_score.toFixed(2) : r.total_score}
                 </span>
               </td>
               <td>
@@ -112,7 +113,7 @@ export default function RatingTable({ ratings, sortBy, sortDir, onSort, onSelect
               <td>
                 {r.ai_score > 0 ? (
                   <span style={{ fontSize: 13, fontWeight: 600, color: getScoreColor(r.ai_score) }}>
-                    {r.ai_score}
+                    {typeof r.ai_score === 'number' ? r.ai_score.toFixed(2) : r.ai_score}
                   </span>
                 ) : (
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>--</span>

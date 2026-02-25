@@ -127,18 +127,31 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     result = await db.execute(rated_q)
     ratings = result.scalars().all()
     rated_count = len(ratings)
-    avg_score = round(sum(r.total_score for r in ratings) / max(rated_count, 1), 1)
+    avg_score = round(sum(r.total_score for r in ratings) / max(rated_count, 1), 2)
     market_dist = {}
     rating_dist = {}
+    ai_success = 0
+    quant_only = 0
+    latest_time = None
     for r in ratings:
         market_dist[r.market] = market_dist.get(r.market, 0) + 1
         rating_dist[r.rating] = rating_dist.get(r.rating, 0) + 1
+        if r.ai_score and r.ai_score > 0:
+            ai_success += 1
+        else:
+            quant_only += 1
+        if r.created_at and (latest_time is None or r.created_at > latest_time):
+            latest_time = r.created_at
+    refresh_time_str = latest_time.strftime("%Y-%m-%d %H:%M") if latest_time else None
     return DashboardStats(
         total_stocks=total or 0,
         rated_today=rated_count,
         avg_score=avg_score,
         market_distribution=market_dist,
         rating_distribution=rating_dist,
+        ai_success_count=ai_success,
+        quant_only_count=quant_only,
+        refresh_time=refresh_time_str,
     )
 
 

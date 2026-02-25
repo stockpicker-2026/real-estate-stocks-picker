@@ -60,14 +60,14 @@ export default function DetailPanel({ rating, onClose }) {
 
   if (!rating) return null
 
-  // 计算量化综合分（5维度加权，保留1位小数）
+  // 计算量化综合分（5维度加权，保留2位小数）
   const quantScore = (
     rating.trend_score * 0.25 +
     rating.momentum_score * 0.20 +
     rating.volatility_score * 0.15 +
     rating.volume_score * 0.20 +
     rating.value_score * 0.20
-  ).toFixed(1)
+  ).toFixed(2)
 
   const scores = [
     { label: '趋势评分', value: rating.trend_score, key: 'trend' },
@@ -94,7 +94,7 @@ export default function DetailPanel({ rating, onClose }) {
         <div className="detail-body">
           {/* 总评分 */}
           <div className="total-score-card">
-            <div className="total-score-number">{rating.total_score}</div>
+            <div className="total-score-number">{typeof rating.total_score === 'number' ? rating.total_score.toFixed(2) : rating.total_score}</div>
             <div className="total-score-label">
               <span className={`badge ${getBadgeClass(rating.rating)}`} style={{ color: '#fff', background: 'rgba(255,255,255,0.2)' }}>
                 {rating.rating}
@@ -102,7 +102,7 @@ export default function DetailPanel({ rating, onClose }) {
             </div>
             {rating.ai_score > 0 && (
               <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-                量化 {quantScore} × 50% + AI {rating.ai_score} × 50%
+                量化 {quantScore} × 50% + AI {typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score} × 50%
               </div>
             )}
           </div>
@@ -115,7 +115,7 @@ export default function DetailPanel({ rating, onClose }) {
                 <div className="score-item" key={s.key}>
                   <div className="score-item-label">{s.label}</div>
                   <div className="score-item-value" style={{ color: getScoreColor(s.value) }}>
-                    {s.value}
+                    {typeof s.value === 'number' ? s.value.toFixed(2) : s.value}
                   </div>
                 </div>
               ))}
@@ -134,7 +134,7 @@ export default function DetailPanel({ rating, onClose }) {
                   <span className="ai-analysis-badge">
                     <span>&#x1F916;</span> 腾讯混元2.0
                   </span>
-                  <span className="ai-analysis-model">AI评分: {rating.ai_score}分</span>
+                  <span className="ai-analysis-model">AI评分: {typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score}分</span>
                 </div>
                 <div className="ai-analysis-content">{rating.reason}</div>
                 <div className="score-composition">
@@ -145,11 +145,11 @@ export default function DetailPanel({ rating, onClose }) {
                   <span style={{ color: 'var(--text-muted)' }}>+</span>
                   <span className="score-comp-part">
                     <span className="score-comp-dot" style={{ background: 'var(--purple)' }} />
-                    AI({rating.ai_score}) ×50%
+                    AI({typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score}) ×50%
                   </span>
                   <span style={{ color: 'var(--text-muted)' }}>=</span>
                   <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    综合 {rating.total_score}
+                    综合 {typeof rating.total_score === 'number' ? rating.total_score.toFixed(2) : rating.total_score}
                   </span>
                 </div>
               </div>
@@ -246,7 +246,7 @@ export default function DetailPanel({ rating, onClose }) {
                       <tr key={h.date} style={{ cursor: 'default' }}>
                         <td>{h.date}</td>
                         <td style={{ fontWeight: 600, color: getScoreColor(h.total_score) }}>
-                          {h.total_score}
+                          {typeof h.total_score === 'number' ? h.total_score.toFixed(2) : h.total_score}
                         </td>
                         <td>
                           <span className={`badge ${getBadgeClass(h.rating)}`}>{h.rating}</span>

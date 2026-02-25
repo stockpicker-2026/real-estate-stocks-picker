@@ -132,6 +132,9 @@ class DashboardStats(BaseModel):
     avg_score: float
     market_distribution: dict
     rating_distribution: dict
+    ai_success_count: int = 0
+    quant_only_count: int = 0
+    refresh_time: Optional[str] = None
 
 
 class RatingHistoryOut(BaseModel):

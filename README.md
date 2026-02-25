@@ -53,8 +53,11 @@
 
 ### 2. AI 智能评级
 - 量化技术评分 × 50% + AI大模型评分 × 50%
-- 每日 09:00 自动刷新，覆盖 55 只房地产股票
+- 每日 09:00 和 16:00 双时段自动刷新，覆盖 55 只房地产股票
+- 评分精度精确到小数点后 2 位
+- AI 分析状态实时提示：显示 AI+量化混合评级是否成功，以及最近更新时间
 - 支持按市场、评级筛选，支持历史日期回溯
+- 点击"跟踪股票"、"已评级"统计卡片可弹出股票清单弹窗
 
 ### 3. 市场点评
 - 管理员发布每日行业点评和个股点评
@@ -96,7 +99,7 @@
 | 35 - 49 | 谨慎 |
 | < 35 | 回避 |
 
-> 若 AI 不可用，自动降级为 100% 量化评分。
+> 若 AI 不可用，自动降级为 100% 量化评分，前端会提示当前处于"纯量化分析模式"。
 
 ## 股票覆盖
 
@@ -113,7 +116,7 @@
 **后端**：
 - FastAPI + Uvicorn（异步 Web 框架）
 - SQLAlchemy + aiosqlite（异步 ORM + SQLite）
-- APScheduler（定时任务，每日 09:00 自动评级）
+- APScheduler（定时任务，每日 09:00 + 16:00 双时段自动评级）
 - AKShare（A股/港股/美股行情数据，自动重试）
 - httpx（异步调用腾讯混元 API）
 - pandas / numpy（量化计算）
@@ -182,7 +185,7 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:3000
+访问 http://localhost:5173
 
 ### 5. 默认账号
 
@@ -206,7 +209,7 @@ npm run dev
 │       ├── schemas.py          # Pydantic 响应模型
 │       ├── stock_list.py       # 房地产股票列表（55只）
 │       ├── data_fetcher.py     # AKShare 数据采集（自动重试）
-│       ├── rating_engine.py    # 评级引擎（量化+AI混合）
+│       ├── rating_engine.py    # 评级引擎（量化+AI混合，精度2位小数）
 │       ├── llm_client.py       # 腾讯混元大模型客户端
 │       └── scheduler.py        # 定时任务调度
 ├── frontend/
@@ -217,10 +220,10 @@ npm run dev
 │       ├── index.css           # 全局样式
 │       └── components/
 │           ├── LoginPage.jsx        # 登录页面
-│           ├── StatsCards.jsx       # 统计仪表盘
+│           ├── StatsCards.jsx       # 统计仪表盘（含AI状态提示+可点击弹窗清单）
 │           ├── RatingMethodology.jsx # 评级逻辑说明
-│           ├── RatingTable.jsx      # 评级列表表格
-│           ├── DetailPanel.jsx      # 股票详情浮层
+│           ├── RatingTable.jsx      # 评级列表表格（分数精度2位小数）
+│           ├── DetailPanel.jsx      # 股票详情浮层（分数精度2位小数）
 │           ├── CommentarySection.jsx # 市场点评板块
 │           ├── ReportSection.jsx    # 研究报告板块
 │           └── UserManagement.jsx   # 用户管理（管理员）
@@ -250,7 +253,7 @@ npm run dev
 
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
-| GET | `/api/dashboard` | 仪表盘统计 | 登录 |
+| GET | `/api/dashboard` | 仪表盘统计（含AI分析状态） | 登录 |
 | GET | `/api/stocks` | 股票列表 | 登录 |
 | GET | `/api/ratings/latest` | 最新评级（支持筛选排序） | 登录 |
 | GET | `/api/ratings/dates` | 可用评级日期 | 登录 |
