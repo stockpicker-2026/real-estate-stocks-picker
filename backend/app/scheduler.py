@@ -92,8 +92,9 @@ async def refresh_all_data():
                 success_count += 1
                 logger.info(f"✓ {stock.name}({stock.code}) - {rating_result['rating']} ({rating_result['total_score']})")
 
-            # 避免请求过快
-            await asyncio.sleep(1.5)
+            # 避免请求过快，随机间隔 3~6 秒
+            import random
+            await asyncio.sleep(random.uniform(3.0, 6.0))
 
         except Exception as e:
             logger.error(f"处理 {stock.name}({stock.code}) 失败: {e}")

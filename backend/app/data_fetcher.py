@@ -1,9 +1,11 @@
 """
 股票数据获取模块
 使用 akshare 获取 A股/港股/美股行情数据
+增加反爬对策：User-Agent伪装、随机延迟、指数退避重试
 """
 
 import logging
+import random
 import ssl
 import time
 from datetime import datetime, timedelta
@@ -11,6 +13,7 @@ from typing import Optional
 
 import akshare as ak
 import pandas as pd
+import requests
 import urllib3
 
 logger = logging.getLogger(__name__)
@@ -21,20 +24,57 @@ try:
 except Exception:
     pass
 
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # 秒
+MAX_RETRIES = 5
+RETRY_DELAY = 3  # 基础重试延迟（秒）
+
+# 浏览器 User-Agent 列表，随机选择
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0",
+]
+
+
+def _patch_session_headers():
+    """给 requests 默认 Session 注入浏览器 User-Agent"""
+    ua = random.choice(_USER_AGENTS)
+    if hasattr(requests, 'Session'):
+        original_init = requests.Session.__init__
+
+        def patched_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            self.headers.update({
+                'User-Agent': ua,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Connection': 'keep-alive',
+            })
+
+        requests.Session.__init__ = patched_init
+
+
+# 启动时注入 UA
+_patch_session_headers()
 
 
 def _retry_fetch(fn, label: str):
-    """带重试的数据获取包装器"""
+    """带指数退避重试的数据获取包装器"""
     for attempt in range(1, MAX_RETRIES + 1):
+        # 每次请求前随机更换 UA
+        _patch_session_headers()
+        # 请求前随机延迟 1~3 秒，模拟人类行为
+        time.sleep(random.uniform(1.0, 3.0))
         try:
             result = fn()
             return result
         except Exception as e:
             if attempt < MAX_RETRIES:
-                logger.info(f"{label} 第{attempt}次失败, {RETRY_DELAY}秒后重试: {e}")
-                time.sleep(RETRY_DELAY * attempt)
+                # 指数退避：3s, 6s, 12s, 24s
+                delay = RETRY_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 2)
+                logger.info(f"{label} 第{attempt}次失败, {delay:.1f}秒后重试: {e}")
+                time.sleep(delay)
             else:
                 logger.warning(f"{label} 数据失败(已重试{MAX_RETRIES}次): {e}")
                 return None
