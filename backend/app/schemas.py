@@ -108,6 +108,14 @@ class RatingOut(BaseModel):
     total_score: float
     rating: str
     reason: str
+    # 基本面数据（来自iFinD，可选）
+    pe_ttm: Optional[float] = None
+    pb_mrq: Optional[float] = None
+    roe: Optional[float] = None
+    eps: Optional[float] = None
+    market_value: Optional[float] = None
+    debt_ratio: Optional[float] = None
+    fundamental_score: Optional[float] = None
 
     class Config:
         from_attributes = True

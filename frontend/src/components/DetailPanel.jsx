@@ -101,10 +101,74 @@ export default function DetailPanel({ rating, onClose }) {
             </div>
             {rating.ai_score > 0 && (
               <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-                量化 {quantScore} × 50% + AI {typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score} × 50%
+                {rating.fundamental_score != null
+                  ? `量化 ${quantScore}×40% + 基本面 ${rating.fundamental_score.toFixed(1)}×15% + AI ${typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score}×45%`
+                  : `量化 ${quantScore}×50% + AI ${typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score}×50%`
+                }
               </div>
             )}
           </div>
+
+          {/* 财务数据（来自iFinD） */}
+          {(rating.pe_ttm != null || rating.pb_mrq != null || rating.roe != null) && (
+            <div className="detail-section">
+              <div className="detail-section-title">财务数据 <span style={{fontSize:11,color:'var(--text-muted)',fontWeight:400}}>（同花顺iFinD）</span></div>
+              <div className="scores-grid">
+                {rating.pe_ttm != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">PE(TTM)</div>
+                    <div className="score-item-value" style={{ color: rating.pe_ttm < 0 ? 'var(--red)' : rating.pe_ttm < 30 ? 'var(--green)' : 'var(--orange)' }}>
+                      {rating.pe_ttm.toFixed(2)}
+                    </div>
+                  </div>
+                )}
+                {rating.pb_mrq != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">PB(MRQ)</div>
+                    <div className="score-item-value" style={{ color: rating.pb_mrq < 1 ? 'var(--accent)' : 'var(--text-primary)' }}>
+                      {rating.pb_mrq.toFixed(4)}{rating.pb_mrq < 1 && rating.pb_mrq > 0 ? ' 破净' : ''}
+                    </div>
+                  </div>
+                )}
+                {rating.market_value != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">总市值</div>
+                    <div className="score-item-value">{rating.market_value.toFixed(0)}亿</div>
+                  </div>
+                )}
+                {rating.roe != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">ROE</div>
+                    <div className="score-item-value" style={{ color: rating.roe > 8 ? 'var(--green)' : rating.roe < 0 ? 'var(--red)' : 'var(--text-primary)' }}>
+                      {rating.roe.toFixed(2)}%
+                    </div>
+                  </div>
+                )}
+                {rating.eps != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">EPS</div>
+                    <div className="score-item-value">{rating.eps.toFixed(4)}</div>
+                  </div>
+                )}
+                {rating.debt_ratio != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">负债率</div>
+                    <div className="score-item-value" style={{ color: rating.debt_ratio > 85 ? 'var(--red)' : rating.debt_ratio > 80 ? 'var(--orange)' : 'var(--green)' }}>
+                      {rating.debt_ratio.toFixed(1)}%
+                    </div>
+                  </div>
+                )}
+                {rating.fundamental_score != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">基本面评分</div>
+                    <div className="score-item-value" style={{ color: getScoreColor(rating.fundamental_score) }}>
+                      {rating.fundamental_score.toFixed(2)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* 维度评分 */}
           <div className="detail-section">
@@ -139,12 +203,21 @@ export default function DetailPanel({ rating, onClose }) {
                 <div className="score-composition">
                   <span className="score-comp-part">
                     <span className="score-comp-dot" style={{ background: 'var(--accent)' }} />
-                    量化({quantScore}) ×50%
+                    量化({quantScore}) ×{rating.fundamental_score != null ? '40%' : '50%'}
                   </span>
+                  {rating.fundamental_score != null && (
+                    <>
+                      <span style={{ color: 'var(--text-muted)' }}>+</span>
+                      <span className="score-comp-part">
+                        <span className="score-comp-dot" style={{ background: 'var(--green)' }} />
+                        基本面({rating.fundamental_score.toFixed(1)}) ×15%
+                      </span>
+                    </>
+                  )}
                   <span style={{ color: 'var(--text-muted)' }}>+</span>
                   <span className="score-comp-part">
                     <span className="score-comp-dot" style={{ background: 'var(--purple)' }} />
-                    AI({typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score}) ×50%
+                    AI({typeof rating.ai_score === 'number' ? rating.ai_score.toFixed(2) : rating.ai_score}) ×{rating.fundamental_score != null ? '45%' : '50%'}
                   </span>
                   <span style={{ color: 'var(--text-muted)' }}>=</span>
                   <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>

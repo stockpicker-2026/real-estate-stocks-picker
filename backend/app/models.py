@@ -102,4 +102,12 @@ class Rating(Base):
     rating = Column(String(20), nullable=False)
     # 评级理由
     reason = Column(Text, default="")
+    # 基本面数据（来自iFinD）
+    pe_ttm = Column(Float, nullable=True)
+    pb_mrq = Column(Float, nullable=True)
+    roe = Column(Float, nullable=True)
+    eps = Column(Float, nullable=True)
+    market_value = Column(Float, nullable=True)  # 亿元
+    debt_ratio = Column(Float, nullable=True)
+    fundamental_score = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.now)

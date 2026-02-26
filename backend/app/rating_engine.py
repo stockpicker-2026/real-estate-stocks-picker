@@ -1,8 +1,8 @@
 """
-房地产股票AI评级引擎（量化 + 大模型混合评级）
+房地产股票AI评级引擎（量化 + 基本面 + 大模型混合评级）
 
 评级架构:
-  量化技术评分 (50%) + AI大模型评分 (50%)
+  量化技术评分 (40%) + 基本面评分 (15%) + AI大模型评分 (45%)
 
 一、量化技术评分（5个维度，各0-100分）:
   1. 趋势评分 (Trend) - 权重25%:
@@ -16,11 +16,16 @@
   5. 价值评分 (Value) - 权重20%:
      距高低点位置(含连续评分)、筹码集中度、多级支撑压力、价格动态区间评估
 
-二、AI大模型评分 (0-100分):
+二、基本面评分 (0-100分):
+  来自iFinD的PE_TTM、PB_MRQ、ROE、EPS等财务数据
+  （仅A股可用，港股/美股跳过此维度）
+
+三、AI大模型评分 (0-100分):
   腾讯混元重点分析公司基本面、财务状况、行业政策、市场情绪，给出AI综合评分和专业分析
 
-综合评分 = 量化评分 × 50% + AI评分 × 50%
-（若AI不可用，则100%使用量化评分）
+综合评分 = 量化评分 × 40% + 基本面评分 × 15% + AI评分 × 45%
+（若基本面不可用，则量化50% + AI50%）
+（若AI不可用，则100%使用量化评分+基本面）
 
 评级映射:
   >= 80: 优选
@@ -40,6 +45,7 @@ from typing import Optional, Dict
 
 from app.llm_client import chat_hunyuan
 from app.news_fetcher import get_real_estate_news_summary
+from app.ifind_client import fetch_fundamentals
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +57,13 @@ QUANT_WEIGHTS = {
     "value": 0.20,
 }
 
-QUANT_RATIO = 0.50  # 量化评分占比
-AI_RATIO = 0.50     # AI评分占比
+QUANT_RATIO = 0.40  # 量化评分占比
+FUNDAMENTAL_RATIO = 0.15  # 基本面评分占比
+AI_RATIO = 0.45     # AI评分占比
+
+# 无基本面数据时的降级比例
+QUANT_RATIO_NO_FUND = 0.50
+AI_RATIO_NO_FUND = 0.50
 
 RATING_MAP = [
     (80, "优选"),
@@ -640,10 +651,110 @@ def calc_quant_score(df: pd.DataFrame) -> Dict[str, float]:
     return scores
 
 
+# ========== 基本面评分（iFinD财务数据）==========
+
+def calc_fundamental_score(fundamentals: Optional[dict]) -> Optional[float]:
+    """基本面评分: 基于iFinD的PE/PB/ROE/EPS等财务数据
+    房地产行业特定评分逻辑:
+      - PE_TTM: 负值减分，10-30合理区间加分
+      - PB_MRQ: <1破净有估值修复空间，1-2合理
+      - ROE: 越高越好，>10优秀
+      - 负债率: 房企普遍高，<80合理，>85预警
+    """
+    if not fundamentals:
+        return None
+
+    pe = fundamentals.get("pe_ttm")
+    pb = fundamentals.get("pb_mrq")
+    roe = fundamentals.get("roe")
+    debt_ratio = fundamentals.get("debt_ratio")
+    eps = fundamentals.get("eps")
+
+    # 至少需要PE或PB才能评分
+    if pe is None and pb is None:
+        return None
+
+    score = 0.0
+    count = 0
+
+    # PE_TTM 评分 (0~30分)
+    if pe is not None:
+        count += 1
+        if pe < 0:
+            score += 5  # 亏损，低分
+        elif pe < 8:
+            score += 28  # 极低PE，深度价值
+        elif pe <= 15:
+            score += 25  # 低PE，价值区间
+        elif pe <= 30:
+            score += 18  # 合理PE
+        elif pe <= 50:
+            score += 10  # 偏高
+        else:
+            score += 5  # 极高PE
+
+    # PB_MRQ 评分 (0~25分) — 房地产行业特别关注PB
+    if pb is not None:
+        count += 1
+        if pb < 0:
+            score += 3  # 净资产为负
+        elif pb < 0.5:
+            score += 22  # 深度破净，可能有修复空间
+        elif pb < 1.0:
+            score += 25  # 破净，估值修复潜力大
+        elif pb < 1.5:
+            score += 20  # 合理区间
+        elif pb < 2.5:
+            score += 12  # 偏高
+        else:
+            score += 5  # 高溢价
+
+    # ROE 评分 (0~25分)
+    if roe is not None:
+        count += 1
+        if roe < 0:
+            score += 3  # 亏损
+        elif roe < 3:
+            score += 8
+        elif roe < 8:
+            score += 15
+        elif roe < 15:
+            score += 22
+        else:
+            score += 25  # 高ROE
+
+    # 负债率评分 (0~20分) — 房企三道红线视角
+    if debt_ratio is not None:
+        count += 1
+        if debt_ratio < 70:
+            score += 20  # 低负债，非常健康
+        elif debt_ratio < 75:
+            score += 16
+        elif debt_ratio < 80:
+            score += 12  # 行业平均水平
+        elif debt_ratio < 85:
+            score += 7  # 偏高
+        else:
+            score += 3  # 高负债预警
+
+    if count == 0:
+        return None
+
+    # 归一化到0-100
+    max_possible = count * 25  # 每个指标平均25分
+    if max_possible > 0:
+        normalized = score / max_possible * 100
+    else:
+        normalized = 50.0
+
+    return _clamp(normalized)
+
+
 # ========== AI大模型评分 ==========
 
-def _build_ai_prompt(name: str, code: str, market: str, df: pd.DataFrame, quant_scores: Dict, news_summary: str = "") -> str:
-    """构建发送给大模型的分析提示（强化政策资讯+基本面维度）"""
+def _build_ai_prompt(name: str, code: str, market: str, df: pd.DataFrame, quant_scores: Dict,
+                     news_summary: str = "", fundamentals: Optional[dict] = None) -> str:
+    """构建发送给大模型的分析提示（强化政策资讯+基本面维度+财务数据）"""
     close = pd.Series(df["close"].values, dtype=float)
     volume = pd.Series(df["volume"].values, dtype=float)
     high = pd.Series(df["high"].values, dtype=float) if "high" in df.columns else close * 1.01
@@ -685,6 +796,35 @@ def _build_ai_prompt(name: str, code: str, market: str, df: pd.DataFrame, quant_
 
 """
 
+    # 财务数据部分
+    fund_section = ""
+    if fundamentals:
+        fund_lines = []
+        if fundamentals.get("pe_ttm") is not None:
+            pe_val = fundamentals["pe_ttm"]
+            pe_note = "（亏损）" if pe_val < 0 else ""
+            fund_lines.append(f"- PE(TTM): {pe_val:.2f}{pe_note}")
+        if fundamentals.get("pb_mrq") is not None:
+            pb_val = fundamentals["pb_mrq"]
+            pb_note = "（破净）" if 0 < pb_val < 1 else ""
+            fund_lines.append(f"- PB(MRQ): {pb_val:.4f}{pb_note}")
+        if fundamentals.get("market_value") is not None:
+            fund_lines.append(f"- 总市值: {fundamentals['market_value']:.2f}亿元")
+        if fundamentals.get("roe") is not None:
+            fund_lines.append(f"- ROE: {fundamentals['roe']:.2f}%")
+        if fundamentals.get("eps") is not None:
+            fund_lines.append(f"- EPS(基本): {fundamentals['eps']:.4f}元")
+        if fundamentals.get("debt_ratio") is not None:
+            dr = fundamentals["debt_ratio"]
+            dr_note = "（三道红线预警）" if dr > 85 else ""
+            fund_lines.append(f"- 资产负债率: {dr:.2f}%{dr_note}")
+        if fundamentals.get("turnover_ratio") is not None:
+            fund_lines.append(f"- 换手率: {fundamentals['turnover_ratio']:.2f}%")
+        if fundamentals.get("report_date"):
+            fund_lines.append(f"- 财务报告期: {fundamentals['report_date']}")
+        if fund_lines:
+            fund_section = "【财务数据（来自同花顺iFinD）】\n" + "\n".join(fund_lines) + "\n\n"
+
     prompt = f"""请对以下中国房地产相关股票进行深度分析，结合最新政策资讯和行情数据，给出你独立的AI评分。
 
 【股票信息】
@@ -692,7 +832,7 @@ def _build_ai_prompt(name: str, code: str, market: str, df: pd.DataFrame, quant_
 - 代码: {code}
 - 市场: {market_name}
 
-{news_section}【行情数据摘要】
+{news_section}{fund_section}【行情数据摘要】
 - 最新价格: {current_price:.2f}
 - 近5日涨跌幅: {ret_5d:+.2f}%
 - 近10日涨跌幅: {ret_10d:+.2f}%
@@ -778,8 +918,9 @@ def _parse_ai_response(response: str) -> Optional[Dict]:
     return None
 
 
-async def get_ai_rating(name: str, code: str, market: str, df: pd.DataFrame, quant_scores: Dict) -> Optional[Dict]:
-    """获取AI大模型评分（融合最新资讯 + 联网搜索）"""
+async def get_ai_rating(name: str, code: str, market: str, df: pd.DataFrame,
+                       quant_scores: Dict, fundamentals: Optional[dict] = None) -> Optional[Dict]:
+    """获取AI大模型评分（融合最新资讯 + 联网搜索 + 财务数据）"""
     # 获取最新房地产资讯
     try:
         news_summary = get_real_estate_news_summary(code, name)
@@ -789,7 +930,7 @@ async def get_ai_rating(name: str, code: str, market: str, df: pd.DataFrame, qua
         logger.warning(f"获取{name}资讯失败: {e}")
         news_summary = ""
 
-    prompt = _build_ai_prompt(name, code, market, df, quant_scores, news_summary)
+    prompt = _build_ai_prompt(name, code, market, df, quant_scores, news_summary, fundamentals)
     # 开启联网搜索，让混元获取最新政策动态
     response = await chat_hunyuan(prompt, system=AI_SYSTEM_PROMPT, temperature=0.3, enable_search=True)
     if not response:
@@ -831,7 +972,7 @@ def _generate_fallback_reason(name: str, scores: Dict[str, float], total: float,
 
 
 async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: str = "") -> Optional[Dict]:
-    """对单只股票进行混合评级（量化+AI）"""
+    """对单只股票进行混合评级（量化 + 基本面 + AI）"""
     if df is None or len(df) < 20:
         return None
 
@@ -839,31 +980,58 @@ async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: s
     quant_scores = calc_quant_score(df)
     quant_total = quant_scores["quant_total"]
 
-    # 2. AI大模型评分
-    ai_result = await get_ai_rating(name, code, market, df, quant_scores)
+    # 2. 基本面数据（iFinD）
+    fundamentals = None
+    fundamental_score = None
+    try:
+        fundamentals = fetch_fundamentals(code, market)
+        if fundamentals:
+            fundamental_score = calc_fundamental_score(fundamentals)
+            if fundamental_score is not None:
+                logger.info(f"  基本面评分: {fundamental_score:.1f} (PE={fundamentals.get('pe_ttm')}, PB={fundamentals.get('pb_mrq')})")
+    except Exception as e:
+        logger.warning(f"获取{name}基本面数据失败: {e}")
 
-    # 3. 综合计算
+    # 3. AI大模型评分
+    ai_result = await get_ai_rating(name, code, market, df, quant_scores, fundamentals)
+
+    # 4. 综合计算
+    has_fund = fundamental_score is not None
     if ai_result:
         ai_score = ai_result["ai_score"]
-        total = round(quant_total * QUANT_RATIO + ai_score * AI_RATIO, 2)
+        if has_fund:
+            total = round(
+                quant_total * QUANT_RATIO +
+                fundamental_score * FUNDAMENTAL_RATIO +
+                ai_score * AI_RATIO, 2
+            )
+        else:
+            total = round(
+                quant_total * QUANT_RATIO_NO_FUND +
+                ai_score * AI_RATIO_NO_FUND, 2
+            )
         reason = ai_result["analysis"]
     else:
         ai_score = 0.0
-        total = round(quant_total, 2)  # AI不可用，100%量化
+        if has_fund:
+            # AI不可用: 量化70% + 基本面30%
+            total = round(quant_total * 0.70 + fundamental_score * 0.30, 2)
+        else:
+            total = round(quant_total, 2)
         reason = ""
 
-    # 4. 映射评级
+    # 5. 映射评级
     rating = "谨慎"
     for threshold, label in RATING_MAP:
         if total >= threshold:
             rating = label
             break
 
-    # 5. 如果AI没有给出理由，使用量化降级理由
+    # 6. 如果AI没有给出理由，使用量化降级理由
     if not reason:
         reason = _generate_fallback_reason(name, quant_scores, total, rating)
 
-    return {
+    result = {
         "trend_score": quant_scores["trend"],
         "momentum_score": quant_scores["momentum"],
         "volatility_score": quant_scores["volatility"],
@@ -874,3 +1042,16 @@ async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: s
         "rating": rating,
         "reason": reason,
     }
+
+    # 7. 附加基本面数据到结果
+    if fundamentals:
+        result["pe_ttm"] = fundamentals.get("pe_ttm")
+        result["pb_mrq"] = fundamentals.get("pb_mrq")
+        result["roe"] = fundamentals.get("roe")
+        result["eps"] = fundamentals.get("eps")
+        result["market_value"] = fundamentals.get("market_value")
+        result["debt_ratio"] = fundamentals.get("debt_ratio")
+    if fundamental_score is not None:
+        result["fundamental_score"] = round(fundamental_score, 2)
+
+    return result

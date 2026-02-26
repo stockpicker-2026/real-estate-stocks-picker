@@ -1,8 +1,8 @@
 """
 股票数据获取模块（多数据源降级版本）
 数据源优先级：
-  A股:  akshare(东方财富) → 腾讯财经 → 新浪财经
-  港股: akshare(东方财富) → 腾讯财经
+  A股:  iFinD(同花顺) → akshare(东方财富) → 腾讯财经 → 新浪财经
+  港股: iFinD(同花顺) → akshare(东方财富) → 腾讯财经
   美股: akshare(东方财富) → 腾讯财经
 当主数据源被封禁时自动降级到备选数据源
 """
@@ -19,6 +19,8 @@ import akshare as ak
 import pandas as pd
 import requests
 import urllib3
+
+from app.ifind_client import fetch_history as ifind_fetch_history
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,22 @@ def _retry_fetch(fn, label: str, max_retries: int = MAX_RETRIES):
             else:
                 logger.warning(f"{label} 失败(已重试{max_retries}次): {e}")
                 return None
+
+
+# ==============================================================================
+# iFinD (同花顺) 数据源 - 最高优先级
+# ==============================================================================
+
+def _ifind_stock_hist(code: str, market: str, days: int = 120) -> Optional[pd.DataFrame]:
+    """通过 iFinD HTTP API 获取历史行情"""
+    try:
+        df = ifind_fetch_history(code, market, days)
+        if df is not None and not df.empty and len(df) >= 2:
+            logger.info(f"iFinD {market}股 {code} 获取成功 ({len(df)}行)")
+            return df
+    except Exception as e:
+        logger.warning(f"iFinD {market}股 {code} 获取失败: {e}")
+    return None
 
 
 # ==============================================================================
@@ -386,7 +404,7 @@ def _akshare_us_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]
 # ==============================================================================
 
 # 全局记录每个数据源的连续失败次数，用于智能排序
-_source_failures = {"akshare": 0, "sina": 0, "tencent": 0}
+_source_failures = {"ifind": 0, "akshare": 0, "sina": 0, "tencent": 0}
 _FAILURE_THRESHOLD = 3  # 连续失败超过此次数，该数据源降低优先级
 
 
@@ -430,22 +448,24 @@ def _fetch_with_fallback(code: str, sources: dict, default_order: list, label: s
 
 
 def fetch_a_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]:
-    """获取A股历史行情 - 多数据源降级: akshare → 腾讯 → 新浪"""
+    """获取A股历史行情 - 多数据源降级: iFinD → akshare → 腾讯 → 新浪"""
     sources = {
+        "ifind": lambda: _ifind_stock_hist(code, "A", days),
         "akshare": lambda: _akshare_a_stock_hist(code, days),
         "tencent": lambda: _tencent_a_stock_hist(code, days),
         "sina": lambda: _sina_a_stock_hist(code, days),
     }
-    return _fetch_with_fallback(code, sources, ["akshare", "tencent", "sina"], f"A股 {code}")
+    return _fetch_with_fallback(code, sources, ["ifind", "akshare", "tencent", "sina"], f"A股 {code}")
 
 
 def fetch_hk_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]:
-    """获取港股历史行情 - 多数据源降级: akshare → 腾讯"""
+    """获取港股历史行情 - 多数据源降级: iFinD → akshare → 腾讯"""
     sources = {
+        "ifind": lambda: _ifind_stock_hist(code, "HK", days),
         "akshare": lambda: _akshare_hk_stock_hist(code, days),
         "tencent": lambda: _tencent_hk_stock_hist(code, days),
     }
-    return _fetch_with_fallback(code, sources, ["akshare", "tencent"], f"港股 {code}")
+    return _fetch_with_fallback(code, sources, ["ifind", "akshare", "tencent"], f"港股 {code}")
 
 
 def fetch_us_stock_hist(code: str, days: int = 120) -> Optional[pd.DataFrame]:
