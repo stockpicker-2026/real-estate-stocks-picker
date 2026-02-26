@@ -27,6 +27,8 @@ async def _migrate_ratings_table(conn):
         ("market_value", "FLOAT"),
         ("debt_ratio", "FLOAT"),
         ("fundamental_score", "FLOAT"),
+        ("main_net_inflow", "FLOAT"),
+        ("rise_day_count", "INTEGER"),
     ]
     for col_name, col_type in new_columns:
         try:

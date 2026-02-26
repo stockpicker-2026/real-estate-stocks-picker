@@ -110,4 +110,7 @@ class Rating(Base):
     market_value = Column(Float, nullable=True)  # 亿元
     debt_ratio = Column(Float, nullable=True)
     fundamental_score = Column(Float, nullable=True)
+    # 资金流数据（来自iFinD实时行情）
+    main_net_inflow = Column(Float, nullable=True)  # 主力净流入（万元）
+    rise_day_count = Column(Integer, nullable=True)  # 连涨/跌天数
     created_at = Column(DateTime, default=datetime.now)

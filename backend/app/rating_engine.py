@@ -45,7 +45,7 @@ from typing import Optional, Dict
 
 from app.llm_client import chat_hunyuan
 from app.news_fetcher import get_real_estate_news_summary
-from app.ifind_client import fetch_fundamentals
+from app.ifind_client import fetch_fundamentals, fetch_recent_announcements
 
 logger = logging.getLogger(__name__)
 
@@ -753,7 +753,8 @@ def calc_fundamental_score(fundamentals: Optional[dict]) -> Optional[float]:
 # ========== AI大模型评分 ==========
 
 def _build_ai_prompt(name: str, code: str, market: str, df: pd.DataFrame, quant_scores: Dict,
-                     news_summary: str = "", fundamentals: Optional[dict] = None) -> str:
+                     news_summary: str = "", fundamentals: Optional[dict] = None,
+                     announcements: str = "") -> str:
     """构建发送给大模型的分析提示（强化政策资讯+基本面维度+财务数据）"""
     close = pd.Series(df["close"].values, dtype=float)
     volume = pd.Series(df["volume"].values, dtype=float)
@@ -822,8 +823,38 @@ def _build_ai_prompt(name: str, code: str, market: str, df: pd.DataFrame, quant_
             fund_lines.append(f"- 换手率: {fundamentals['turnover_ratio']:.2f}%")
         if fundamentals.get("report_date"):
             fund_lines.append(f"- 财务报告期: {fundamentals['report_date']}")
+        # 资金流数据
+        if fundamentals.get("main_net_inflow") is not None:
+            mnf = fundamentals["main_net_inflow"]
+            mnf_note = "（主力流入）" if mnf > 0 else "（主力流出）"
+            fund_lines.append(f"- 今日主力净流入: {mnf:+.2f}万元{mnf_note}")
+        if fundamentals.get("retail_net_inflow") is not None:
+            rnf = fundamentals["retail_net_inflow"]
+            fund_lines.append(f"- 今日散户净流入: {rnf:+.2f}万元")
+        if fundamentals.get("large_net_inflow") is not None:
+            fund_lines.append(f"- 今日超大单净流入: {fundamentals['large_net_inflow']:+.2f}万元")
+        # 连涨天数
+        if fundamentals.get("rise_day_count") is not None:
+            rdc = fundamentals["rise_day_count"]
+            rdc_note = f"连涨{rdc}天" if rdc > 0 else (f"连跌{abs(rdc)}天" if rdc < 0 else "平盘")
+            fund_lines.append(f"- 连涨/跌天数: {rdc_note}")
+        # 量比
+        if fundamentals.get("vol_ratio") is not None:
+            fund_lines.append(f"- 量比: {fundamentals['vol_ratio']:.2f}")
+        # iFinD多周期涨跌幅（比手动计算更准确）
+        ifind_chg_parts = []
+        for key, label in [("chg_5d","5日"),("chg_20d","20日"),("chg_60d","60日"),("chg_year","年初至今")]:
+            if fundamentals.get(key) is not None:
+                ifind_chg_parts.append(f"{label}{fundamentals[key]:+.2f}%")
+        if ifind_chg_parts:
+            fund_lines.append(f"- iFinD涨跌幅: {', '.join(ifind_chg_parts)}")
         if fund_lines:
             fund_section = "【财务数据（来自同花顺iFinD）】\n" + "\n".join(fund_lines) + "\n\n"
+
+    # 公告数据部分
+    announcement_section = ""
+    if announcements:
+        announcement_section = f"{announcements}\n\n"
 
     prompt = f"""请对以下中国房地产相关股票进行深度分析，结合最新政策资讯和行情数据，给出你独立的AI评分。
 
@@ -832,7 +863,7 @@ def _build_ai_prompt(name: str, code: str, market: str, df: pd.DataFrame, quant_
 - 代码: {code}
 - 市场: {market_name}
 
-{news_section}{fund_section}【行情数据摘要】
+{news_section}{fund_section}{announcement_section}【行情数据摘要】
 - 最新价格: {current_price:.2f}
 - 近5日涨跌幅: {ret_5d:+.2f}%
 - 近10日涨跌幅: {ret_10d:+.2f}%
@@ -920,7 +951,7 @@ def _parse_ai_response(response: str) -> Optional[Dict]:
 
 async def get_ai_rating(name: str, code: str, market: str, df: pd.DataFrame,
                        quant_scores: Dict, fundamentals: Optional[dict] = None) -> Optional[Dict]:
-    """获取AI大模型评分（融合最新资讯 + 联网搜索 + 财务数据）"""
+    """获取AI大模型评分（融合最新资讯 + 联网搜索 + 财务数据 + 公司公告）"""
     # 获取最新房地产资讯
     try:
         news_summary = get_real_estate_news_summary(code, name)
@@ -930,7 +961,16 @@ async def get_ai_rating(name: str, code: str, market: str, df: pd.DataFrame,
         logger.warning(f"获取{name}资讯失败: {e}")
         news_summary = ""
 
-    prompt = _build_ai_prompt(name, code, market, df, quant_scores, news_summary, fundamentals)
+    # 获取近期公告（iFinD）
+    announcements = ""
+    try:
+        announcements = fetch_recent_announcements(code, market, days=30) or ""
+        if announcements:
+            logger.info(f"  已获取{name}近期公告，注入AI分析")
+    except Exception as e:
+        logger.debug(f"获取{name}公告失败（非关键）: {e}")
+
+    prompt = _build_ai_prompt(name, code, market, df, quant_scores, news_summary, fundamentals, announcements)
     # 开启联网搜索，让混元获取最新政策动态
     response = await chat_hunyuan(prompt, system=AI_SYSTEM_PROMPT, temperature=0.3, enable_search=True)
     if not response:
@@ -1051,6 +1091,9 @@ async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: s
         result["eps"] = fundamentals.get("eps")
         result["market_value"] = fundamentals.get("market_value")
         result["debt_ratio"] = fundamentals.get("debt_ratio")
+        # 新增资金流数据
+        result["main_net_inflow"] = fundamentals.get("main_net_inflow")
+        result["rise_day_count"] = fundamentals.get("rise_day_count")
     if fundamental_score is not None:
         result["fundamental_score"] = round(fundamental_score, 2)
 

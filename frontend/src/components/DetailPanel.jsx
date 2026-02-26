@@ -158,6 +158,22 @@ export default function DetailPanel({ rating, onClose }) {
                     </div>
                   </div>
                 )}
+                {rating.main_net_inflow != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">主力净流入</div>
+                    <div className="score-item-value" style={{ color: rating.main_net_inflow > 0 ? 'var(--red)' : 'var(--green)' }}>
+                      {rating.main_net_inflow > 0 ? '+' : ''}{(rating.main_net_inflow / 10000).toFixed(1)}亿
+                    </div>
+                  </div>
+                )}
+                {rating.rise_day_count != null && (
+                  <div className="score-item">
+                    <div className="score-item-label">{rating.rise_day_count >= 0 ? '连涨' : '连跌'}</div>
+                    <div className="score-item-value" style={{ color: rating.rise_day_count > 0 ? 'var(--red)' : rating.rise_day_count < 0 ? 'var(--green)' : 'var(--text-muted)' }}>
+                      {Math.abs(rating.rise_day_count)}天
+                    </div>
+                  </div>
+                )}
                 {rating.fundamental_score != null && (
                   <div className="score-item">
                     <div className="score-item-label">基本面评分</div>

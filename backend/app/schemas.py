@@ -116,6 +116,9 @@ class RatingOut(BaseModel):
     market_value: Optional[float] = None
     debt_ratio: Optional[float] = None
     fundamental_score: Optional[float] = None
+    # 资金流数据
+    main_net_inflow: Optional[float] = None
+    rise_day_count: Optional[int] = None
 
     class Config:
         from_attributes = True
