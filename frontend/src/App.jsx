@@ -150,7 +150,7 @@ export default function App() {
         <div className="container header-inner">
           <div className="logo">
             <div className="logo-icon">AI</div>
-            <span>房地产股票评级</span>
+            <span>AI Haoxing@东吴地产</span>
           </div>
           <nav className="nav-tabs">
             {tabs.map(t => (

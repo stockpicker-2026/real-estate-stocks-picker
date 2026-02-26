@@ -469,6 +469,26 @@ async def download_report(rid: int, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/reports/{rid}/preview")
+async def preview_report(rid: int, db: AsyncSession = Depends(get_db)):
+    """在线预览报告文件（PDF 以 inline 方式返回）"""
+    result = await db.execute(select(Report).where(Report.id == rid))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    ext = os.path.splitext(report.filename)[1].lower()
+    if ext != ".pdf":
+        raise HTTPException(status_code=400, detail="仅支持 PDF 文件在线预览")
+    filepath = os.path.join(UPLOAD_DIR, report.filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(
+        filepath,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=\"{report.original_name}\""},
+    )
+
+
 @router.delete("/reports/{rid}")
 async def delete_report(
     rid: int,
@@ -501,11 +521,11 @@ def _share_html(title: str, description: str, content_html: str, meta_extra: str
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>{safe_title} - 房地产股票AI评级</title>
+<title>{safe_title} - AI Haoxing@东吴地产</title>
 <meta property="og:title" content="{safe_title}" />
 <meta property="og:description" content="{safe_desc}" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="房地产股票AI评级" />
+<meta property="og:site_name" content="AI Haoxing@东吴地产" />
 <meta name="description" content="{safe_desc}" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="{safe_title}" />
@@ -538,7 +558,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hir
 <div class="share-page">
 {content_html}
 <div class="share-footer">
-<p>来自 <strong>房地产股票AI评级</strong></p>
+<p>来自 <strong>AI Haoxing@东吴地产</strong></p>
 <p style="margin-top:4px">AI评级仅供参考，不构成投资建议</p>
 {f'<a href="{base_url}" class="share-cta">打开完整系统 →</a>' if base_url else ''}
 </div>
@@ -594,10 +614,28 @@ async def share_report(rid: int, request: Request, db: AsyncSession = Depends(ge
 
     file_size_str = f"{report.file_size / (1024*1024):.1f} MB" if report.file_size > 1024*1024 else f"{report.file_size / 1024:.1f} KB"
     download_url = f"/api/reports/{rid}/download"
+    preview_url = f"/api/reports/{rid}/preview"
+    ext = os.path.splitext(report.filename)[1].lower()
 
     summary_html = ""
     if report.summary:
         summary_html = f"<p>{report.summary}</p>"
+
+    # PDF 文件提供 iframe 内嵌预览
+    if ext == ".pdf":
+        preview_html = f"""<div style="margin-top:16px">
+<iframe src="{preview_url}" style="width:100%;height:70vh;border:1px solid #eee;border-radius:8px" allowfullscreen></iframe>
+<div style="text-align:center;margin-top:12px">
+<a href="{download_url}" class="dl-btn">下载报告</a>
+</div>
+</div>"""
+    else:
+        preview_html = f"""<div style="margin-top:16px;padding:16px;background:#f8f9fa;border-radius:8px;text-align:center">
+<div style="font-size:36px;margin-bottom:8px">📄</div>
+<div style="font-size:14px;color:#666;margin-bottom:4px">{report.original_name}</div>
+<div style="font-size:12px;color:#999">{file_size_str}</div>
+<a href="{download_url}" class="dl-btn">下载报告</a>
+</div>"""
 
     content_html = f"""
 <div class="share-header">
@@ -611,12 +649,7 @@ async def share_report(rid: int, request: Request, db: AsyncSession = Depends(ge
 </div>
 <div class="share-body">
 {summary_html}
-<div style="margin-top:16px;padding:16px;background:#f8f9fa;border-radius:8px;text-align:center">
-<div style="font-size:36px;margin-bottom:8px">📄</div>
-<div style="font-size:14px;color:#666;margin-bottom:4px">{report.original_name}</div>
-<div style="font-size:12px;color:#999">{file_size_str}</div>
-<a href="{download_url}" class="dl-btn">下载报告</a>
-</div>
+{preview_html}
 </div>"""
 
     desc = report.summary or f"{report.institution}研究报告：{report.title}"

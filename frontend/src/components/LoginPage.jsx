@@ -31,7 +31,7 @@ export default function LoginPage({ onLogin }) {
       <div className="login-card">
         <div className="login-logo">
           <div className="logo-icon">AI</div>
-          <span>房地产股票评级</span>
+          <span>AI Haoxing@东吴地产</span>
         </div>
         <p className="login-subtitle">智能AI评级 · 市场深度点评 · 机构研究报告</p>
 

@@ -1,5 +1,5 @@
 """
-房地产股票AI评级Agent - 后端服务
+AI Haoxing@东吴地产 - 后端服务
 """
 
 import asyncio
@@ -33,11 +33,12 @@ async def init_admin():
     """首次启动时创建默认管理员账户"""
     async with async_session() as session:
         result = await session.execute(select(User).where(User.username == ADMIN_USERNAME))
-        if result.scalar_one_or_none() is None:
+        admin = result.scalar_one_or_none()
+        if admin is None:
             admin = User(
                 username=ADMIN_USERNAME,
                 hashed_password=hash_password(ADMIN_PASSWORD),
-                display_name="管理员",
+                display_name="Jianghaoxing",
                 is_admin=True,
                 is_active=True,
             )
@@ -45,7 +46,13 @@ async def init_admin():
             await session.commit()
             logger.info(f"默认管理员账户已创建: {ADMIN_USERNAME}")
         else:
-            logger.info("管理员账户已存在，跳过创建")
+            # 更新已有管理员的显示名称
+            if admin.display_name != "Jianghaoxing":
+                admin.display_name = "Jianghaoxing"
+                await session.commit()
+                logger.info("管理员显示名称已更新为 Jianghaoxing")
+            else:
+                logger.info("管理员账户已存在，跳过创建")
 
 
 async def check_and_refresh():
@@ -102,7 +109,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
-app = FastAPI(title="房地产股票AI评级Agent", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="AI Haoxing@东吴地产", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

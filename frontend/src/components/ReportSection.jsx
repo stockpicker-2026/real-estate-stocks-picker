@@ -48,6 +48,11 @@ export default function ReportSection({ user }) {
     }
   }
 
+  const handlePreview = (id) => {
+    const url = `/api/reports/${id}/preview`
+    window.open(url, '_blank')
+  }
+
   const handleDownload = (id) => {
     const url = api.getReportDownloadUrl(id)
     const token = localStorage.getItem('token')
@@ -102,6 +107,11 @@ export default function ReportSection({ user }) {
                 <button className="btn btn-sm btn-share" onClick={() => setShareReport(r)}>
                   分享
                 </button>
+                {(r.original_name || '').toLowerCase().endsWith('.pdf') && (
+                  <button className="btn btn-sm" style={{color:'#667eea',borderColor:'#667eea'}} onClick={() => handlePreview(r.id)}>
+                    预览
+                  </button>
+                )}
                 <button className="btn btn-primary btn-sm" onClick={() => handleDownload(r.id)}>
                   下载
                 </button>
