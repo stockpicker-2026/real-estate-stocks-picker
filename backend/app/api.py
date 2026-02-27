@@ -655,7 +655,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hir
 .share-meta{{font-size:13px;opacity:0.85;display:flex;flex-wrap:wrap;gap:12px}}
 .share-meta span{{display:inline-flex;align-items:center;gap:4px}}
 .share-body{{background:#fff;padding:24px 20px;border-radius:0 0 12px 12px;box-shadow:0 2px 12px rgba(0,0,0,0.08)}}
-.share-body p,.share-body div{{font-size:15px;line-height:1.8;color:#333;white-space:pre-wrap;word-break:break-word}}
+.share-body p,.share-body div{{font-size:15px;line-height:1.8;color:#333;white-space:normal;word-break:break-word}}
 .share-tag{{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:500;margin-right:8px}}
 .tag-industry{{background:rgba(255,255,255,0.2);color:#fff}}
 .tag-stock{{background:rgba(255,255,255,0.2);color:#fff}}
@@ -707,7 +707,7 @@ async def share_commentary(cid: int, request: Request, db: AsyncSession = Depend
 </div>
 </div>
 <div class="share-body">
-<div>{item.content}</div>
+<div>{item.content.replace(chr(10)+chr(10), '</div><div style="margin-bottom:12px">').replace(chr(10), ' ')}</div>
 {stocks_html}
 </div>"""
 
@@ -741,7 +741,13 @@ async def share_report(rid: int, request: Request, db: AsyncSession = Depends(ge
 
     summary_html = ""
     if safe_summary:
-        summary_html = f"<p>{safe_summary}</p>"
+        # 将双换行保留为段落分隔，单换行转为空格（修复PDF提取的碎片断行）
+        import re as _re
+        cleaned = _re.sub(r'\n{2,}', '\n\n', safe_summary)  # 统一多换行为双换行
+        paragraphs = cleaned.split('\n\n')
+        # 每个段落内的单换行替换为空格
+        paragraphs = [p.replace('\n', ' ').strip() for p in paragraphs if p.strip()]
+        summary_html = ''.join(f"<p style='margin-bottom:12px'>{p}</p>" for p in paragraphs)
 
     # PDF 文件提供 iframe 内嵌预览 + 错误容错
     if ext == ".pdf":
