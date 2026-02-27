@@ -78,23 +78,33 @@ export default function RatingMethodology() {
                 <span className="ifind-badge-sm">iFinD</span>
               </div>
               <div className="methodology-col-desc">
-                基于同花顺iFinD实时数据，涵盖估值、资金面、市场情绪三个维度
+                基于同花顺iFinD实时数据，涵盖估值、资金面、市场情绪、盈利能力、交易活跃度五个维度
               </div>
               <div className="dimension-list">
                 <DimensionItem
                   name="核心估值"
-                  weight="60分"
+                  weight="50分"
                   desc="PE(TTM)·PB(MRQ)·ROE·资产负债率(三道红线)"
                 />
                 <DimensionItem
                   name="资金面"
-                  weight="25分"
+                  weight="20分"
                   desc="主力净流入·量比·委比"
                 />
                 <DimensionItem
                   name="市场情绪"
-                  weight="15分"
+                  weight="10分"
                   desc="连涨/跌天数·振幅"
+                />
+                <DimensionItem
+                  name="盈利能力"
+                  weight="10分"
+                  desc="EPS每股收益"
+                />
+                <DimensionItem
+                  name="交易活跃度"
+                  weight="10分"
+                  desc="换手率·20日涨跌幅"
                 />
               </div>
             </div>
