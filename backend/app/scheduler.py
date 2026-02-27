@@ -16,6 +16,7 @@ from app.models import Stock, StockPrice, Rating
 from app.stock_list import REAL_ESTATE_STOCKS
 from app.data_fetcher import fetch_stock_hist
 from app.rating_engine import rate_stock
+from app.news_fetcher import preload_news_cache
 
 logger = logging.getLogger(__name__)
 
@@ -100,4 +101,11 @@ async def refresh_all_data():
             logger.error(f"处理 {stock.name}({stock.code}) 失败: {e}")
 
     logger.info(f"刷新完成: {success_count}/{len(stocks)} 成功")
+
+    # 刷新完成后预热新闻缓存
+    try:
+        await preload_news_cache()
+    except Exception as e:
+        logger.warning(f"刷新后预热新闻缓存失败: {e}")
+
     return success_count

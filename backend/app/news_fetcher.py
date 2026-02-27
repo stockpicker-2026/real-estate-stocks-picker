@@ -6,6 +6,7 @@
 获取后通过 AI 进行相关性筛选，只保留高度相关的房地产政策新闻
 """
 
+import asyncio
 import json
 import logging
 import random
@@ -30,6 +31,7 @@ _USER_AGENTS = [
 # 新闻缓存
 _news_cache: Dict[str, dict] = {}
 _CACHE_TTL = 3600  # 1小时
+_AI_FILTER_TIMEOUT = 15  # AI筛选超时秒数
 
 # 房地产核心关键词（用于初步过滤）
 _RE_KEYWORDS = re.compile(
@@ -174,7 +176,10 @@ async def _ai_filter_news(news_list: List[Dict], top_n: int = 5) -> List[Dict]:
 请直接返回筛选后的新闻编号（如"1,3,5,8,12"），只返回数字编号用逗号分隔，不要其他内容。"""
 
     try:
-        result = await chat_hunyuan(prompt, temperature=0.1)
+        result = await asyncio.wait_for(
+            chat_hunyuan(prompt, temperature=0.1),
+            timeout=_AI_FILTER_TIMEOUT,
+        )
         if result:
             # 解析返回的编号
             result = result.strip()
@@ -377,3 +382,37 @@ def get_real_estate_news_summary(code: str = "", name: str = "") -> str:
         return ""
 
     return "\n".join(lines)
+
+
+# ========== 预热缓存 ==========
+
+async def preload_news_cache():
+    """预热新闻缓存（启动时和定时刷新后调用）
+    先快速拉取原始新闻，再异步做 AI 筛选
+    """
+    try:
+        logger.info("预热新闻缓存...")
+        # 1. 拉取原始新闻（同步HTTP请求，约5-10s）
+        raw_news = await asyncio.to_thread(fetch_all_industry_news)
+        if not raw_news:
+            logger.warning("预热新闻缓存: 无原始新闻数据")
+            return
+
+        # 2. 先用关键词排序快速写入缓存（即时可用）
+        quick_5 = _keyword_rank_news(raw_news, 5)
+        quick_10 = _keyword_rank_news(raw_news, 10)
+        _set_cache("filtered_top5", quick_5)
+        _set_cache("filtered_top10", quick_10)
+        logger.info(f"预热新闻缓存(关键词): {len(raw_news)}条原始 → 快速缓存就绪")
+
+        # 3. 异步做 AI 筛选，完成后覆盖缓存（更高质量）
+        try:
+            ai_5 = await _ai_filter_news(raw_news, 5)
+            _set_cache("filtered_top5", ai_5)
+            ai_10 = await _ai_filter_news(raw_news, 10)
+            _set_cache("filtered_top10", ai_10)
+            logger.info("预热新闻缓存(AI筛选): 已更新为AI筛选结果")
+        except Exception as e:
+            logger.warning(f"预热AI筛选失败(已有关键词排序兜底): {e}")
+    except Exception as e:
+        logger.warning(f"预热新闻缓存失败: {e}")

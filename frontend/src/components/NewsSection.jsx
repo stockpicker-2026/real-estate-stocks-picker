@@ -14,10 +14,16 @@ export default function NewsSection() {
 
   async function loadNews(limit) {
     try {
-      const data = await api.getNews(null, null, limit)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 12000)
+      )
+      const data = await Promise.race([
+        api.getNews(null, null, limit),
+        timeoutPromise,
+      ])
       setNews(data)
     } catch (e) {
-      console.error('获取资讯失败:', e)
+      console.warn('获取资讯失败或超时:', e.message)
     } finally {
       setLoading(false)
     }

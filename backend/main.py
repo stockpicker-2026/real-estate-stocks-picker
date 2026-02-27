@@ -19,6 +19,7 @@ from app.database import init_db, async_session
 from app.models import Rating, User
 from app.auth import hash_password
 from app.scheduler import init_stock_list, refresh_all_data
+from app.news_fetcher import preload_news_cache
 
 logging.basicConfig(
     level=logging.INFO,
@@ -94,6 +95,8 @@ async def lifespan(app: FastAPI):
 
     # 启动时检查并自动刷新（后台异步执行，不阻塞启动）
     asyncio.create_task(check_and_refresh())
+    # 预热新闻缓存（后台异步，不阻塞启动）
+    asyncio.create_task(preload_news_cache())
 
     yield
 
