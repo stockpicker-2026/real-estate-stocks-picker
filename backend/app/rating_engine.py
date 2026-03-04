@@ -1630,8 +1630,8 @@ async def rate_stock(df: pd.DataFrame, name: str = "", code: str = "", market: s
 #   估值层面 - PB < 1
 # ========================================================================
 
-SOOCHOW_FUND_RATIO = 0.70   # 基本面评分占比
-SOOCHOW_AI_RATIO = 0.30     # AI评分占比
+SOOCHOW_FUND_RATIO = 0.50   # 基本面评分占比
+SOOCHOW_AI_RATIO = 0.50     # AI评分占比
 SOOCHOW_FUND_NO_AI = 1.00   # AI不可用时100%基本面
 
 SOOCHOW_AI_PROMPT = """你是东吴证券地产研究团队的资深分析师，专注中国房地产行业基本面研究。
