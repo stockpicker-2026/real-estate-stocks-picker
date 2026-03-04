@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, String, Float, Integer, DateTime, Date, Text, Index, Boolean
+from sqlalchemy import Column, String, Float, Integer, DateTime, Date, Text, Index, Boolean, UniqueConstraint
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -128,3 +128,19 @@ class Rating(Base):
     chg_120d = Column(Float, nullable=True)
     chg_year = Column(Float, nullable=True)  # 年初至今涨跌幅
     created_at = Column(DateTime, default=datetime.now)
+
+
+class Watchlist(Base):
+    """用户自选股票池"""
+    __tablename__ = "watchlists"
+    __table_args__ = (
+        UniqueConstraint("user_id", "stock_code", name="uq_watchlist_user_stock"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    stock_code = Column(String(20), nullable=False)
+    stock_name = Column(String(100), nullable=False)
+    market = Column(String(10), nullable=False)
+    note = Column(String(500), default="")  # 用户备注
+    added_at = Column(DateTime, default=datetime.now)

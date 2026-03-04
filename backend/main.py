@@ -98,17 +98,17 @@ async def lifespan(app: FastAPI):
     await init_admin()
     logger.info("数据库初始化完成")
 
-    # 定时任务: 每天 9:00 自动刷新数据和评分
+    # 定时任务: 每天 8:00 自动刷新数据和评分
     scheduler.add_job(
         refresh_all_data,
         "cron",
-        hour=9,
+        hour=8,
         minute=0,
-        id="refresh_09",
+        id="refresh_08",
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("定时任务已启动: 每天 9:00 自动刷新数据和评级")
+    logger.info("定时任务已启动: 每天 8:00 自动刷新数据和评级")
 
     # 启动时检查并自动刷新（后台异步执行，不阻塞启动）
     asyncio.create_task(check_and_refresh())

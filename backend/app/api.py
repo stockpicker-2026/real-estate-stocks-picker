@@ -2,6 +2,7 @@
 API路由 - 包含评级、认证、点评、报告模块
 """
 
+import json
 import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -19,7 +20,7 @@ from app.auth import (
 )
 from app.config import UPLOAD_DIR
 from app.database import get_db
-from app.models import Stock, Rating, StockPrice, User, Commentary, Report
+from app.models import Stock, Rating, StockPrice, User, Commentary, Report, Watchlist
 from app.news_fetcher import fetch_filtered_news, fetch_stock_news
 from app.ifind_client import fetch_recent_announcements, fetch_reports
 from app.schemas import (
@@ -27,6 +28,7 @@ from app.schemas import (
     LoginRequest, RegisterRequest, TokenResponse, UserOut,
     CommentaryCreate, CommentaryUpdate, CommentaryOut,
     ReportOut,
+    WatchlistAdd, WatchlistOut, WatchlistAnalysisItem,
 )
 
 router = APIRouter(prefix="/api")
@@ -640,6 +642,268 @@ async def delete_report(
         await db.execute(delete(Report).where(Report.id == rid))
         await db.commit()
     return {"ok": True}
+
+
+# ========== 自选股票池接口 ==========
+
+MAX_WATCHLIST = 10
+
+
+@router.get("/watchlist", response_model=list[WatchlistOut])
+async def get_watchlist(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取用户自选股列表"""
+    q = select(Watchlist).where(Watchlist.user_id == user.id).order_by(Watchlist.added_at)
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+@router.post("/watchlist", response_model=WatchlistOut)
+async def add_to_watchlist(
+    req: WatchlistAdd,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """添加股票到自选（最多10只）"""
+    # 检查数量限制
+    count = await db.scalar(
+        select(func.count(Watchlist.id)).where(Watchlist.user_id == user.id)
+    )
+    if count and count >= MAX_WATCHLIST:
+        raise HTTPException(status_code=400, detail=f"自选股数量已达上限({MAX_WATCHLIST}只)")
+
+    # 检查是否已在自选中
+    existing = await db.execute(
+        select(Watchlist).where(
+            Watchlist.user_id == user.id,
+            Watchlist.stock_code == req.stock_code,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="该股票已在自选中")
+
+    # 验证股票是否在系统中
+    stock_result = await db.execute(
+        select(Stock).where(Stock.code == req.stock_code, Stock.is_active == 1)
+    )
+    stock = stock_result.scalar_one_or_none()
+    if not stock:
+        raise HTTPException(status_code=400, detail="无效的股票代码")
+
+    item = Watchlist(
+        user_id=user.id,
+        stock_code=stock.code,
+        stock_name=stock.name,
+        market=stock.market,
+        note=req.note or "",
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.put("/watchlist/{stock_code}")
+async def update_watchlist_note(
+    stock_code: str,
+    req: WatchlistAdd,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新自选股备注"""
+    result = await db.execute(
+        select(Watchlist).where(
+            Watchlist.user_id == user.id,
+            Watchlist.stock_code == stock_code,
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="自选股不存在")
+    item.note = req.note or ""
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/watchlist/{stock_code}")
+async def remove_from_watchlist(
+    stock_code: str,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """从自选中移除股票"""
+    await db.execute(
+        delete(Watchlist).where(
+            Watchlist.user_id == user.id,
+            Watchlist.stock_code == stock_code,
+        )
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/watchlist/analysis", response_model=list[WatchlistAnalysisItem])
+async def get_watchlist_analysis(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取自选股AI操作建议分析
+
+    基于最新评级数据 + 近期趋势，由三模型联合生成操作建议。
+    """
+    import asyncio
+    from app.llm_client import chat_deepseek, chat_glm, chat_kimi
+    from app.config import DEEPSEEK_ENABLED, GLM_ENABLED, KIMI_ENABLED
+
+    # 获取用户自选股
+    wl_result = await db.execute(
+        select(Watchlist).where(Watchlist.user_id == user.id).order_by(Watchlist.added_at)
+    )
+    watchlist = wl_result.scalars().all()
+    if not watchlist:
+        return []
+
+    codes = [w.stock_code for w in watchlist]
+
+    # 批量获取最新评级（两个模型）
+    latest_ratings = {}
+    prev_ratings = {}
+    for model_type in ("quant_ai", "soochow"):
+        latest_date = await db.scalar(
+            select(func.max(Rating.date)).where(Rating.model_type == model_type)
+        )
+        if latest_date:
+            result = await db.execute(
+                select(Rating).where(
+                    Rating.date == latest_date,
+                    Rating.model_type == model_type,
+                    Rating.code.in_(codes),
+                )
+            )
+            for r in result.scalars().all():
+                key = f"{r.code}_{model_type}"
+                latest_ratings[key] = r
+
+            # 获取前一日评级（计算变化）
+            prev_date = await db.scalar(
+                select(func.max(Rating.date)).where(
+                    Rating.model_type == model_type,
+                    Rating.date < latest_date,
+                )
+            )
+            if prev_date:
+                result = await db.execute(
+                    select(Rating).where(
+                        Rating.date == prev_date,
+                        Rating.model_type == model_type,
+                        Rating.code.in_(codes),
+                    )
+                )
+                for r in result.scalars().all():
+                    key = f"{r.code}_{model_type}"
+                    prev_ratings[key] = r
+
+    # 构建每只股票的摘要，用于AI分析
+    stock_summaries = []
+    items_base = []
+    for w in watchlist:
+        qa_key = f"{w.stock_code}_quant_ai"
+        sw_key = f"{w.stock_code}_soochow"
+        qa = latest_ratings.get(qa_key)
+        sw = latest_ratings.get(sw_key)
+        best = qa or sw
+        prev_qa = prev_ratings.get(qa_key)
+
+        score = best.total_score if best else None
+        rating = best.rating if best else None
+        prev_score = prev_qa.total_score if prev_qa else None
+        score_change = round(score - prev_score, 1) if score is not None and prev_score is not None else None
+
+        items_base.append({
+            "stock_code": w.stock_code,
+            "stock_name": w.stock_name,
+            "market": w.market,
+            "latest_rating": rating,
+            "latest_score": score,
+            "score_change": score_change,
+        })
+
+        # 为AI prompt准备
+        summary = f"{w.stock_name}({w.stock_code}, {w.market}股)"
+        if best:
+            summary += f"：综合评分{best.total_score}分，评级「{best.rating}」"
+            if best.reason:
+                reason_short = best.reason[:200]
+                summary += f"，分析：{reason_short}"
+        if score_change is not None:
+            summary += f"，较前日变化{score_change:+.1f}分"
+        stock_summaries.append(summary)
+
+    # 调用AI生成操作建议
+    if not stock_summaries:
+        return [WatchlistAnalysisItem(**item, suggestion="暂无数据", reason="暂无评级数据") for item in items_base]
+
+    prompt = f"""你是一位专业的房地产行业股票投资顾问。以下是用户自选股票池中{len(stock_summaries)}只股票的最新评级数据：
+
+{"；".join(stock_summaries)}
+
+请对每只股票给出简明的操作建议。要求：
+1. 针对每只股票给出明确的操作建议：「买入」「加仓」「持有」「减仓」「观望」「回避」之一
+2. 给出1-2句理由（不超过80字）
+3. 综合考虑评分趋势变化、当前评级、市场环境
+
+请严格按以下JSON数组格式返回，不要附加其他文字：
+[{{"code":"股票代码","suggestion":"操作建议","reason":"理由"}}]"""
+
+    system = "你是房地产行业资深投资顾问，擅长根据量化评级和基本面数据给出操作建议。请直接返回JSON，不要有其他文字。"
+
+    tasks = []
+    task_labels = []
+    if DEEPSEEK_ENABLED:
+        tasks.append(chat_deepseek(prompt, system=system, temperature=0.3))
+        task_labels.append("DeepSeek")
+    if GLM_ENABLED:
+        tasks.append(chat_glm(prompt, system=system, temperature=0.3))
+        task_labels.append("GLM-5")
+    if KIMI_ENABLED:
+        tasks.append(chat_kimi(prompt, system=system))
+        task_labels.append("Kimi")
+
+    suggestions_map = {}
+    if tasks:
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        for resp, label in zip(raw_results, task_labels):
+            if isinstance(resp, Exception) or not resp:
+                continue
+            try:
+                # 提取JSON部分
+                import re
+                json_match = re.search(r'\[.*\]', resp, re.DOTALL)
+                if json_match:
+                    parsed = json.loads(json_match.group())
+                    for item in parsed:
+                        code = item.get("code", "")
+                        if code and code not in suggestions_map:
+                            suggestions_map[code] = {
+                                "suggestion": item.get("suggestion", "观望"),
+                                "reason": item.get("reason", ""),
+                                "source": label,
+                            }
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"解析{label}自选股建议失败: {e}")
+
+    # 组装结果
+    result = []
+    for item in items_base:
+        sug = suggestions_map.get(item["stock_code"], {})
+        result.append(WatchlistAnalysisItem(
+            **item,
+            suggestion=sug.get("suggestion", "暂无建议"),
+            reason=sug.get("reason", "等待AI分析"),
+        ))
+    return result
 
 
 # ========== 公开分享页面（无需登录） ==========

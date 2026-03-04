@@ -26,9 +26,8 @@ REAL_ESTATE_STOCKS = [
     {"code": "600736", "name": "苏州高新", "market": "A"},
     {"code": "000560", "name": "我爱我家", "market": "A"},
 
-    # ========== 港股（35只）==========
+    # ========== 港股（34只）==========
     {"code": "00016", "name": "新鸿基地产", "market": "HK"},
-    {"code": "80016", "name": "新鸿基地产-R", "market": "HK"},
     {"code": "01109", "name": "华润置地", "market": "HK"},
     {"code": "01113", "name": "长实集团", "market": "HK"},
     {"code": "00012", "name": "恒基地产", "market": "HK"},

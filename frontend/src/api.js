@@ -143,4 +143,20 @@ export const api = {
     }),
   deleteReport: (id) => request(`/reports/${id}`, { method: 'DELETE' }),
   getReportDownloadUrl: (id) => `${BASE}/reports/${id}/download`,
+
+  // ========== 自选股票池 ==========
+  getWatchlist: () => request('/watchlist'),
+  addToWatchlist: (stock_code, note = '') =>
+    request('/watchlist', {
+      method: 'POST',
+      body: JSON.stringify({ stock_code, note }),
+    }),
+  updateWatchlistNote: (stock_code, note) =>
+    request(`/watchlist/${stock_code}`, {
+      method: 'PUT',
+      body: JSON.stringify({ stock_code, note }),
+    }),
+  removeFromWatchlist: (stock_code) =>
+    request(`/watchlist/${stock_code}`, { method: 'DELETE' }),
+  getWatchlistAnalysis: () => request('/watchlist/analysis'),
 }

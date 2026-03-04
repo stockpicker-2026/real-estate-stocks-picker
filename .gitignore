@@ -10,3 +10,15 @@ __pycache__/
 .DS_Store
 *.log
 venv
+.codebuddy/
+
+# 临时脚本和文件
+_diagrams/
+_update_report.py
+_verify.py
+test_hk.py
+
+# 截图和文档
+screenshot_*.png
+/*.pdf
+/*.docx

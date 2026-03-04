@@ -169,3 +169,32 @@ class RatingHistoryOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ========== 自选股相关 ==========
+class WatchlistAdd(BaseModel):
+    stock_code: str
+    note: Optional[str] = ""
+
+
+class WatchlistOut(BaseModel):
+    id: int
+    stock_code: str
+    stock_name: str
+    market: str
+    note: str
+    added_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WatchlistAnalysisItem(BaseModel):
+    stock_code: str
+    stock_name: str
+    market: str
+    latest_rating: Optional[str] = None
+    latest_score: Optional[float] = None
+    score_change: Optional[float] = None  # 对比前一日分数变化
+    suggestion: str = ""  # AI操作建议：买入/持有/减仓/观望
+    reason: str = ""  # AI建议理由

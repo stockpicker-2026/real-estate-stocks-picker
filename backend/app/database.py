@@ -63,10 +63,32 @@ async def _migrate_ratings_table(conn):
         pass
 
 
+async def _migrate_watchlists_table(conn):
+    """创建 watchlists 表（如已存在则忽略）"""
+    try:
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS watchlists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                stock_code VARCHAR(20) NOT NULL,
+                stock_name VARCHAR(100) NOT NULL,
+                market VARCHAR(10) NOT NULL,
+                note VARCHAR(500) DEFAULT '',
+                added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (user_id, stock_code)
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_watchlist_user_id ON watchlists (user_id)"))
+        logger.info("watchlists table ready")
+    except Exception:
+        pass
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _migrate_ratings_table(conn)
+        await _migrate_watchlists_table(conn)
 
 
 async def get_db():
