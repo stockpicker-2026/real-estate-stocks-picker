@@ -14,6 +14,9 @@ venv
 
 # 临时脚本和文件
 _diagrams/
+_draw_diagrams.py
+_modify_docx2.py
+_scan_tables.py
 _update_report.py
 _verify.py
 test_hk.py
