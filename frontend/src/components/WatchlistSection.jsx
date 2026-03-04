@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../api'
 
 const MAX_WATCHLIST = 10
+const CACHE_KEY = 'watchlist_analysis'
+const ANALYZING_KEY = 'watchlist_analyzing'
 
 const SUGGESTION_COLORS = {
   '买入': { bg: '#dcfce7', color: '#166534', border: '#86efac' },
@@ -19,6 +21,9 @@ const RATING_COLORS = {
   '谨慎': '#ef4444',
 }
 
+// 全局分析 promise，组件卸载后请求仍继续
+let _analyzePromise = null
+
 export default function WatchlistSection({ user, onSelectStock }) {
   const [watchlist, setWatchlist] = useState([])
   const [analysis, setAnalysis] = useState([])
@@ -28,6 +33,43 @@ export default function WatchlistSection({ user, onSelectStock }) {
   const [showAdd, setShowAdd] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [addLoading, setAddLoading] = useState(false)
+  const mountedRef = useRef(true)
+
+  // 组件挂载时恢复缓存的分析结果 & 检测后台分析状态
+  useEffect(() => {
+    mountedRef.current = true
+    try {
+      const cached = localStorage.getItem(CACHE_KEY)
+      if (cached) {
+        const { data, time } = JSON.parse(cached)
+        // 缓存24小时内有效
+        if (Date.now() - time < 24 * 60 * 60 * 1000 && Array.isArray(data)) {
+          setAnalysis(data)
+        }
+      }
+    } catch {}
+
+    // 如果有后台分析正在进行，恢复 analyzing 状态并轮询
+    if (_analyzePromise || localStorage.getItem(ANALYZING_KEY)) {
+      setAnalyzing(true)
+      if (_analyzePromise) {
+        _analyzePromise.then(data => {
+          if (mountedRef.current && data) {
+            setAnalysis(data)
+            setAnalyzing(false)
+          }
+        }).catch(() => {
+          if (mountedRef.current) setAnalyzing(false)
+        })
+      } else {
+        // 页面刷新后 promise 丢失，清除过期标记
+        localStorage.removeItem(ANALYZING_KEY)
+        setAnalyzing(false)
+      }
+    }
+
+    return () => { mountedRef.current = false }
+  }, [])
 
   const loadWatchlist = useCallback(async () => {
     setLoading(true)
@@ -77,16 +119,32 @@ export default function WatchlistSection({ user, onSelectStock }) {
     }
   }
 
-  const handleAnalyze = async () => {
-    if (watchlist.length === 0) return
+  const handleAnalyze = () => {
+    if (watchlist.length === 0 || _analyzePromise) return
     setAnalyzing(true)
-    try {
-      const data = await api.getWatchlistAnalysis()
-      setAnalysis(data)
-    } catch (err) {
-      alert('获取AI分析失败: ' + err.message)
-    }
-    setAnalyzing(false)
+    localStorage.setItem(ANALYZING_KEY, '1')
+
+    _analyzePromise = api.getWatchlistAnalysis()
+      .then(data => {
+        // 缓存结果
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ data, time: Date.now() }))
+        localStorage.removeItem(ANALYZING_KEY)
+        if (mountedRef.current) {
+          setAnalysis(data)
+          setAnalyzing(false)
+        }
+        _analyzePromise = null
+        return data
+      })
+      .catch(err => {
+        localStorage.removeItem(ANALYZING_KEY)
+        if (mountedRef.current) {
+          setAnalyzing(false)
+          alert('获取AI分析失败: ' + err.message)
+        }
+        _analyzePromise = null
+        throw err
+      })
   }
 
   // 已在自选中的code集合
@@ -118,7 +176,7 @@ export default function WatchlistSection({ user, onSelectStock }) {
               onClick={handleAnalyze}
               disabled={analyzing}
             >
-              {analyzing ? 'AI分析中...' : 'AI操作建议'}
+              {analyzing ? 'AI分析中（可离开本页）...' : 'AI操作建议'}
             </button>
           )}
           {watchlist.length < MAX_WATCHLIST && (
