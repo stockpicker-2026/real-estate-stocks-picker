@@ -141,7 +141,7 @@ export default function WatchlistSection({ user, onSelectStock }) {
             autoFocus
           />
           <div className="watchlist-stock-grid">
-            {filteredStocks.slice(0, 20).map(s => (
+            {filteredStocks.map(s => (
               <button
                 key={s.code}
                 className="watchlist-stock-chip"
