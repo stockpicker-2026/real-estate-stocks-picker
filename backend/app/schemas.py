@@ -198,3 +198,37 @@ class WatchlistAnalysisItem(BaseModel):
     score_change: Optional[float] = None  # 对比前一日分数变化
     suggestion: str = ""  # AI操作建议：买入/持有/减仓/观望
     reason: str = ""  # AI建议理由
+
+
+# ========== 模拟仓位相关 ==========
+class PortfolioWeightItem(BaseModel):
+    stock_code: str
+    weight: float  # 仓位百分比 0~100
+
+
+class PortfolioWeightUpdate(BaseModel):
+    weights: list[PortfolioWeightItem]
+
+
+class PortfolioWeightOut(BaseModel):
+    stock_code: str
+    stock_name: str
+    market: str
+    weight: float
+
+    class Config:
+        from_attributes = True
+
+
+class PortfolioDailyReturn(BaseModel):
+    date: str
+    daily_return: float  # 当日收益率 %
+    cumulative_return: float  # 累计收益率 %
+
+
+class PortfolioPerformance(BaseModel):
+    weights: list[PortfolioWeightOut]
+    daily_returns: list[PortfolioDailyReturn]
+    total_return: float  # 总收益率 %
+    annualized_return: Optional[float] = None  # 年化收益率 %
+    max_drawdown: Optional[float] = None  # 最大回撤 %

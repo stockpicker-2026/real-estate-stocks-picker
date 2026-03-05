@@ -29,6 +29,7 @@ from app.schemas import (
     CommentaryCreate, CommentaryUpdate, CommentaryOut,
     ReportOut,
     WatchlistAdd, WatchlistOut, WatchlistAnalysisItem,
+    PortfolioWeightUpdate, PortfolioWeightOut, PortfolioPerformance, PortfolioDailyReturn,
 )
 
 router = APIRouter(prefix="/api")
@@ -658,7 +659,7 @@ async def delete_report(
 
 # ========== 自选股票池接口 ==========
 
-MAX_WATCHLIST = 10
+MAX_WATCHLIST = 15
 
 
 @router.get("/watchlist", response_model=list[WatchlistOut])
@@ -678,7 +679,7 @@ async def add_to_watchlist(
     user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """添加股票到自选（最多10只）"""
+    """添加股票到自选（最多15只）"""
     # 检查数量限制
     count = await db.scalar(
         select(func.count(Watchlist.id)).where(Watchlist.user_id == user.id)
@@ -916,6 +917,161 @@ async def get_watchlist_analysis(
             reason=sug.get("reason", "等待AI分析"),
         ))
     return result
+
+
+# ========== 模拟仓位接口 ==========
+
+@router.get("/portfolio/weights", response_model=list[PortfolioWeightOut])
+async def get_portfolio_weights(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取用户模拟仓位配置"""
+    q = (
+        select(PortfolioWeight, Watchlist.stock_name, Watchlist.market)
+        .join(Watchlist, (Watchlist.user_id == PortfolioWeight.user_id) & (Watchlist.stock_code == PortfolioWeight.stock_code))
+        .where(PortfolioWeight.user_id == user.id)
+    )
+    rows = (await db.execute(q)).all()
+    return [
+        PortfolioWeightOut(stock_code=pw.stock_code, stock_name=name, market=market, weight=pw.weight)
+        for pw, name, market in rows
+    ]
+
+
+@router.put("/portfolio/weights")
+async def update_portfolio_weights(
+    req: PortfolioWeightUpdate,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量更新模拟仓位（百分比之和须等于100）"""
+    total = sum(w.weight for w in req.weights)
+    if abs(total - 100) > 0.01 and total > 0:
+        raise HTTPException(status_code=400, detail=f"仓位百分比之和须等于100%，当前为{total:.1f}%")
+
+    # 验证股票都在自选中
+    wl_result = await db.execute(
+        select(Watchlist.stock_code).where(Watchlist.user_id == user.id)
+    )
+    wl_codes = set(wl_result.scalars().all())
+    for w in req.weights:
+        if w.stock_code not in wl_codes:
+            raise HTTPException(status_code=400, detail=f"{w.stock_code} 不在自选股中")
+
+    # 清除旧配置，写入新配置
+    await db.execute(
+        delete(PortfolioWeight).where(PortfolioWeight.user_id == user.id)
+    )
+    for w in req.weights:
+        if w.weight > 0:
+            db.add(PortfolioWeight(user_id=user.id, stock_code=w.stock_code, weight=w.weight))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/portfolio/performance", response_model=PortfolioPerformance)
+async def get_portfolio_performance(
+    days: int = Query(default=30, ge=1, le=365),
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """计算模拟仓位每日收益率"""
+    # 获取仓位配置
+    q = (
+        select(PortfolioWeight, Watchlist.stock_name, Watchlist.market)
+        .join(Watchlist, (Watchlist.user_id == PortfolioWeight.user_id) & (Watchlist.stock_code == PortfolioWeight.stock_code))
+        .where(PortfolioWeight.user_id == user.id, PortfolioWeight.weight > 0)
+    )
+    rows = (await db.execute(q)).all()
+    if not rows:
+        return PortfolioPerformance(weights=[], daily_returns=[], total_return=0)
+
+    weights_out = [
+        PortfolioWeightOut(stock_code=pw.stock_code, stock_name=name, market=market, weight=pw.weight)
+        for pw, name, market in rows
+    ]
+    weight_map = {pw.stock_code: pw.weight / 100.0 for pw, _, _ in rows}
+    codes = list(weight_map.keys())
+
+    # 获取每只股票近N天的收盘价
+    start_date = date.today() - timedelta(days=days + 10)
+    price_q = (
+        select(StockPrice)
+        .where(StockPrice.code.in_(codes), StockPrice.date >= start_date)
+        .order_by(StockPrice.date)
+    )
+    price_rows = (await db.execute(price_q)).scalars().all()
+
+    # 按日期、股票组织价格
+    from collections import defaultdict
+    price_by_code = defaultdict(list)
+    for p in price_rows:
+        price_by_code[p.code].append((p.date, p.close))
+
+    # 计算每只股票的每日收益率
+    daily_returns_by_code = {}
+    for code, prices in price_by_code.items():
+        prices.sort(key=lambda x: x[0])
+        returns = []
+        for i in range(1, len(prices)):
+            if prices[i-1][1] and prices[i-1][1] > 0:
+                ret = (prices[i][1] - prices[i-1][1]) / prices[i-1][1] * 100
+                returns.append((prices[i][0], ret))
+        daily_returns_by_code[code] = dict(returns)
+
+    # 汇总所有交易日期
+    all_dates = sorted(set(
+        d for rets in daily_returns_by_code.values() for d in rets.keys()
+    ))
+    # 只取最近 days 天
+    all_dates = all_dates[-days:] if len(all_dates) > days else all_dates
+
+    # 计算加权组合收益率
+    daily_returns = []
+    cumulative = 0
+    cum_factor = 1.0
+    for d in all_dates:
+        portfolio_ret = 0
+        for code, w in weight_map.items():
+            stock_ret = daily_returns_by_code.get(code, {}).get(d, 0)
+            portfolio_ret += stock_ret * w
+        cum_factor *= (1 + portfolio_ret / 100)
+        cumulative = (cum_factor - 1) * 100
+        daily_returns.append(PortfolioDailyReturn(
+            date=str(d),
+            daily_return=round(portfolio_ret, 4),
+            cumulative_return=round(cumulative, 4),
+        ))
+
+    total_return = round(cumulative, 4)
+
+    # 年化收益率
+    annualized = None
+    if len(daily_returns) > 1:
+        trading_days = len(daily_returns)
+        annualized = round(((cum_factor ** (252 / trading_days)) - 1) * 100, 2)
+
+    # 最大回撤
+    max_drawdown = None
+    if daily_returns:
+        peak = -999
+        mdd = 0
+        for dr in daily_returns:
+            if dr.cumulative_return > peak:
+                peak = dr.cumulative_return
+            dd = peak - dr.cumulative_return
+            if dd > mdd:
+                mdd = dd
+        max_drawdown = round(mdd, 4)
+
+    return PortfolioPerformance(
+        weights=weights_out,
+        daily_returns=daily_returns,
+        total_return=total_return,
+        annualized_return=annualized,
+        max_drawdown=max_drawdown,
+    )
 
 
 # ========== 公开分享页面（无需登录） ==========

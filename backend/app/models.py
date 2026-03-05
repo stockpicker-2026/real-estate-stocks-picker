@@ -144,3 +144,17 @@ class Watchlist(Base):
     market = Column(String(10), nullable=False)
     note = Column(String(500), default="")  # 用户备注
     added_at = Column(DateTime, default=datetime.now)
+
+
+class PortfolioWeight(Base):
+    """模拟仓位权重"""
+    __tablename__ = "portfolio_weights"
+    __table_args__ = (
+        UniqueConstraint("user_id", "stock_code", name="uq_portfolio_user_stock"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    stock_code = Column(String(20), nullable=False)
+    weight = Column(Float, nullable=False, default=0)  # 仓位百分比 0~100
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

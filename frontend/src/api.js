@@ -159,4 +159,14 @@ export const api = {
   removeFromWatchlist: (stock_code) =>
     request(`/watchlist/${stock_code}`, { method: 'DELETE' }),
   getWatchlistAnalysis: () => request('/watchlist/analysis'),
+
+  // ========== 模拟仓位 ==========
+  getPortfolioWeights: () => request('/portfolio/weights'),
+  updatePortfolioWeights: (weights) =>
+    request('/portfolio/weights', {
+      method: 'PUT',
+      body: JSON.stringify({ weights }),
+    }),
+  getPortfolioPerformance: (days = 30) =>
+    request(`/portfolio/performance?days=${days}`),
 }
