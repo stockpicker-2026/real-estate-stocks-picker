@@ -20,7 +20,7 @@ from app.auth import (
 )
 from app.config import UPLOAD_DIR
 from app.database import get_db
-from app.models import Stock, Rating, StockPrice, User, Commentary, Report, Watchlist
+from app.models import Stock, Rating, StockPrice, User, Commentary, Report, Watchlist, PortfolioWeight
 from app.news_fetcher import fetch_filtered_news, fetch_stock_news
 from app.ifind_client import fetch_recent_announcements, fetch_reports
 from app.schemas import (
